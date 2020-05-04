@@ -1,0 +1,19 @@
+{
+    "configurations": [
+        {
+            "name": "Mac",
+            "includePath": [
+                "../virtualgl-2.6.3/include/",
+                "../virtualgl-2.6.3/common/",
+                "/opt/libjpeg-turbo/include/",
+                "../virtualgl-2.6.3/build/include/"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/clang",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "clang-x64"
+        }
+    ],
+    "version": 4
+}
