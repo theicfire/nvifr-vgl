@@ -16,7 +16,7 @@ OBJECTS = $(patsubst %.cpp, %.o, $(wildcard *.cpp))
 HEADERS = $(wildcard *.h)
 
 %.o: %.cpp $(HEADERS)
-	$(CXX) -m$(OS_SIZE) $(CXXFLAGS) -c $< -o $@
+	$(CXX) -fpic -m$(OS_SIZE) $(CXXFLAGS) -c $< -o $@
 
 .PRECIOUS: $(TARGET) $(OBJECTS)
 
