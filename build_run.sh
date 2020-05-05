@@ -4,12 +4,6 @@ export LD_LIBRARY_PATH=/home/mighty
 g++ -I../virtualgl-2.6.3/include/ -I../virtualgl-2.6.3/common/ -I/opt/libjpeg-turbo/include/ -I../virtualgl-2.6.3/build/include/ \
 -c -Wall -fpic testplugin.cpp
 
-g++ -I../virtualgl-2.6.3/include/ -I../virtualgl-2.6.3/common/ -I/opt/libjpeg-turbo/include/ -I../virtualgl-2.6.3/build/include/ \
- -c -Wall -fpic encoder/encoder.cpp
-
-g++ -I../virtualgl-2.6.3/include/ -I../virtualgl-2.6.3/common/ -I/opt/libjpeg-turbo/include/ -I../virtualgl-2.6.3/build/include/ \
- -c -Wall -fpic encoder/XCapture.cpp
-
 g++ -shared \
   -o ~/libvgltrans_hello.so \
   -m64  testplugin.o nvifr-encoder/XCapture.o  nvifr-encoder/encoder.o  -lnvidia-ifr -lGL -lGLEW -lX11 
