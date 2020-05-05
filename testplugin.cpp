@@ -18,7 +18,6 @@ using namespace vglcommon;
 using namespace vglserver;
 
 int get_frame_count = 0;
-static NV_IFROGL_HW_ENC_TYPE codecType = NV_IFROGL_HW_ENC_H264;
 
 static Error err;
 char errStr[MAXSTR + 14];
@@ -49,72 +48,18 @@ extern "C"
 
 	void *RRTransInit(Display *dpy, Window win_, FakerConfig *fconfig_)
 	{
-		printf("ooo RRTransInit!\n");
-		string window_name;
-		string out_file = "window.h264";
+		printf("Hit RRTransInit!\n");
+		XCapture::nvIFR.initialize();
 
-		window_name = "YouTube - Google Chrome";
-
-		Display *display = XOpenDisplay(NULL);
-		if (display == NULL)
+		printf("Call CreateEncSession\n");
+		NV_IFROGL_SESSION_HANDLE m_hSession;
+		if (XCapture::nvIFR.nvIFROGLCreateSession(&m_hSession, NULL) !=
+			NV_IFROGL_SUCCESS)
 		{
-			printf("Unable to open display.\n");
+			printf("Failed to create a NvIFROGL session.\n");
 			return (void *)thing;
 		}
-		int screen = DefaultScreen(display);
-		printf("Screen: %d\n", screen);
-
-		XSetErrorHandler(XErrorFunc);
-		Window root_window = XDefaultRootWindow(display);
-
-		printf("Enumerate windows: \n");
-		vector<Window> windowList;
-		GetWindowWithGivenName(display, root_window, &windowList,
-							   window_name.c_str());
-		for (vector<Window>::iterator i = windowList.begin(); i != windowList.end();
-			 ++i)
-		{
-			PrintWindowName(display, *i);
-		}
-
-		if (window_name.size() > 0)
-		{
-			XCapture::NvIFROGLInitialize();
-			CaptureThreadData thread_data;
-			thread_data.m_pDisplay = display;
-			thread_data.m_iScreen = screen;
-			thread_data.m_iFps = 30;
-			thread_data.m_window = windowList[0];
-			sprintf(thread_data.m_strOutName, "%s", out_file.c_str());
-
-			CaptureThreadData *threadData = (CaptureThreadData *)&thread_data;
-			XCapture *pXCapture = new XCapture;
-
-			// Try to bind the window without/with specifying the alpha channel property.
-			if (!pXCapture->InitializeGLXContext(threadData->m_pDisplay,
-												 threadData->m_iScreen,
-												 threadData->m_window, false) &&
-				!pXCapture->InitializeGLXContext(threadData->m_pDisplay,
-												 threadData->m_iScreen,
-												 threadData->m_window, true))
-			{
-				// Both fail. Skip it and keep enumerating other windows.
-				fprintf(stderr,
-						"InitializeGLXContext() failed. Current window will be skipped.\n");
-				return (void *)thing;
-			}
-			pXCapture->InitializeGL(threadData->m_window);
-			printf("Call CreateEncSession\n");
-			if (!pXCapture->NvIFROGLCreateEncSession(strlen(threadData->m_strOutName) > 0
-														 ? threadData->m_strOutName
-														 : NULL,
-													 threadData->m_iFps, 0, codecType))
-			{
-				fprintf(stderr, "NvIFROGLCreateEncSession() failed. Program will exit.");
-				exit(-1);
-			}
-			printf("Done CreateEncSession\n");
-		}
+		printf("FAILS TO GET HERE: Done CreateEncSession\n");
 
 		return (void *)thing;
 	}
