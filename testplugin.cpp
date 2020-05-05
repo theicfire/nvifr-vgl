@@ -10,10 +10,12 @@
 #include <X11/Xlib.h>
 #include "rrtransport.h"
 #include "../virtualgl-2.6.3/server/VGLTrans.h"
+#include "./encoder/encoder.h"
 
 using namespace vglutil;
 using namespace vglcommon;
 using namespace vglserver;
+
 int get_frame_count = 0;
 
 static Error err;
@@ -33,6 +35,7 @@ static const int pf2trans[PIXELFORMATS] =
 		RRTRANS_ARGB, RRTRANS_RGB};
 
 RRFrame rr_frame;
+std::unique_ptr<encoder::Encoder> enc;
 
 FakerConfig *fconfig_getinstance(void) { return fconfig; }
 
@@ -46,6 +49,13 @@ extern "C"
 	void *RRTransInit(Display *dpy, Window win_, FakerConfig *fconfig_)
 	{
 		printf("ooo RRTransInit!\n");
+		// GL context is still valid here! Ok...
+		// if (enc == nullptr)
+		// {
+		// 	printf("Make encoder!\n");
+		// 	enc = std::make_unique<encoder::Encoder>();
+		// 	printf("Done make encoder!\n");
+		// }
 		return (void *)thing;
 	}
 
