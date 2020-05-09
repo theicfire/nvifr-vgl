@@ -104,17 +104,18 @@ void captureHwEnc()
 	const void *data;
 
 	// transfer the framebuffer
-	if (XCapture::nvIFR.nvIFROGLTransferFramebufferToHwEnc(
-			m_hTransferObject, NULL, 0, GL_FRONT_LEFT, GL_NONE) != NV_IFROGL_SUCCESS)
 	// if (XCapture::nvIFR.nvIFROGLTransferFramebufferToHwEnc(
-	// 		m_hTransferObject, NULL, drawFBO, GL_COLOR_ATTACHMENT0_EXT, GL_NONE) != NV_IFROGL_SUCCESS)
+	// 		m_hTransferObject, NULL, 0, GL_FRONT_LEFT, GL_NONE) != NV_IFROGL_SUCCESS)
+	if (XCapture::nvIFR.nvIFROGLTransferFramebufferToHwEnc(
+			m_hTransferObject, NULL, drawFBO, GL_COLOR_ATTACHMENT0_EXT, GL_NONE) != NV_IFROGL_SUCCESS)
 	{
 		fprintf(stderr, "Failed to transfer data from the framebuffer.\n");
 		print_nvifr_error();
 		exit(-1);
 	}
 
-	printf("Now lock transfer object. Deadlock about to happen..\n");
+
+	printf("Now lock transfer object.\n");
 
 	// lock the transferred data
 	if (XCapture::nvIFR.nvIFROGLLockTransferData(m_hTransferObject, &dataSize,
@@ -144,16 +145,16 @@ void captureSys()
 
 	// transfer the framebuffer
 	// if (XCapture::nvIFR.nvIFROGLTransferFramebufferToSys(
-	// 		m_hSysTransferObject, drawFBO, GL_COLOR_ATTACHMENT0_EXT, NV_IFROGL_TRANSFER_FRAMEBUFFER_FLAG_NONE, 0, 0, 0, 0) != NV_IFROGL_SUCCESS)
+	// 		m_hSysTransferObject, 0, GL_FRONT_LEFT, NV_IFROGL_TRANSFER_FRAMEBUFFER_FLAG_NONE, 0, 0, 0, 0) != NV_IFROGL_SUCCESS)
 	if (XCapture::nvIFR.nvIFROGLTransferFramebufferToSys(
-			m_hSysTransferObject, 0, GL_FRONT_LEFT, NV_IFROGL_TRANSFER_FRAMEBUFFER_FLAG_NONE, 0, 0, 0, 0) != NV_IFROGL_SUCCESS)
+			m_hSysTransferObject, drawFBO, GL_COLOR_ATTACHMENT0_EXT, NV_IFROGL_TRANSFER_FRAMEBUFFER_FLAG_NONE, 0, 0, 0, 0) != NV_IFROGL_SUCCESS)
 	{
 		fprintf(stderr, "Failed to transfer data from the framebuffer.\n");
 		print_nvifr_error();
 		exit(-1);
 	}
 
-	printf("Now lock transfer object. Deadlock about to hapen..\n");
+	printf("Now lock transfer object.\n");
 
 	// lock the transferred data
 	if (XCapture::nvIFR.nvIFROGLLockTransferData(m_hSysTransferObject, &dataSize,
