@@ -36,13 +36,144 @@ static const int pf2trans[PIXELFORMATS] =
 		RRTRANS_ARGB, RRTRANS_RGB};
 
 RRFrame rr_frame;
+NV_IFROGL_SESSION_HANDLE m_hSession;
+static NV_IFROGL_HW_ENC_TYPE codecType = NV_IFROGL_HW_ENC_H264;
+NV_IFROGL_TRANSFEROBJECT_HANDLE m_hTransferObject = nullptr;
+NV_IFROGL_HW_ENC_CONFIG config;
+NV_IFROGL_TO_SYS_CONFIG to_sys_config;
+NV_IFROGL_TRANSFEROBJECT_HANDLE m_hSysTransferObject = nullptr;
 
 FakerConfig *fconfig_getinstance(void) { return fconfig; }
+
+void print_nvifr_error()
+{
+	char errorString[200];
+	memset(errorString, 0, 200);
+	unsigned int returnedLen, remainingBytes;
+	XCapture::nvIFR.nvIFROGLGetError(errorString, 200, &returnedLen, &remainingBytes);
+	printf("nvifrogl error: %s", errorString);
+}
+
+void setupNVIFRSYS()
+{
+	to_sys_config.format = NV_IFROGL_TARGET_FORMAT_YUV420P;
+	int ret;
+	if ((ret = XCapture::nvIFR.nvIFROGLCreateTransferToSysObject(
+			 m_hSession, &to_sys_config, &m_hSysTransferObject)) !=
+		NV_IFROGL_SUCCESS)
+	{
+		printf("Lame! NvIFROGLCreateRawSession Failed to create a transfer object "
+			   "with code %d. ",
+			   ret);
+	}
+}
+
+void setupNVIFRHwEnc()
+{
+	memset(&config, 0, sizeof(config));
+
+	config.profile = 100;
+	config.frameRateNum = 30;
+	config.frameRateDen = 1;
+	config.width = 300;
+	config.height = 300;
+	config.avgBitRate = 300 * 300 * 30 * 12 / 8;
+
+	config.GOPLength = 75;
+	config.rateControl = NV_IFROGL_HW_ENC_RATE_CONTROL_CBR;
+	config.stereoFormat = NV_IFROGL_HW_ENC_STEREO_NONE;
+	config.VBVBufferSize = config.avgBitRate;
+	config.VBVInitialDelay = config.avgBitRate;
+	config.codecType = codecType;
+
+	if (XCapture::nvIFR.nvIFROGLCreateTransferToHwEncObject(
+			m_hSession, &config, &m_hTransferObject) != NV_IFROGL_SUCCESS)
+	{
+		printf("Failed to create a NvIFROGL transfer object. w=%d, h=%d\n",
+			   config.width, config.height);
+	}
+}
+
+void captureHwEnc()
+{
+	GLint drawFBO;
+	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFBO);
+	printf("fbo is %d\n", drawFBO);
+
+	uintptr_t dataSize;
+	const void *data;
+
+	// transfer the framebuffer
+	// if (XCapture::nvIFR.nvIFROGLTransferFramebufferToHwEnc(
+	// 		m_hTransferObject, NULL, 0, GL_FRONT_LEFT, GL_NONE) != NV_IFROGL_SUCCESS)
+	if (XCapture::nvIFR.nvIFROGLTransferFramebufferToHwEnc(
+			m_hTransferObject, NULL, drawFBO, GL_COLOR_ATTACHMENT0_EXT, GL_NONE) != NV_IFROGL_SUCCESS)
+	{
+		fprintf(stderr, "Failed to transfer data from the framebuffer.\n");
+		print_nvifr_error();
+		exit(-1);
+	}
+
+
+	printf("Now lock transfer object.\n");
+
+	// lock the transferred data
+	if (XCapture::nvIFR.nvIFROGLLockTransferData(m_hTransferObject, &dataSize,
+												 &data) != NV_IFROGL_SUCCESS)
+	{
+		fprintf(stderr, "Failed to lock the transferred data.\n");
+	}
+
+	printf("FAILS to get here.\n");
+
+	// release the data buffer
+	if (XCapture::nvIFR.nvIFROGLReleaseTransferData(m_hTransferObject) !=
+		NV_IFROGL_SUCCESS)
+	{
+		fprintf(stderr, "Failed to release the transferred data.\n");
+	}
+}
+
+void captureSys()
+{
+	GLint drawFBO;
+	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFBO);
+	printf("fbo is %d\n", drawFBO);
+
+	uintptr_t dataSize;
+	const void *data;
+
+	// transfer the framebuffer
+	// if (XCapture::nvIFR.nvIFROGLTransferFramebufferToSys(
+	// 		m_hSysTransferObject, 0, GL_FRONT_LEFT, NV_IFROGL_TRANSFER_FRAMEBUFFER_FLAG_NONE, 0, 0, 0, 0) != NV_IFROGL_SUCCESS)
+	if (XCapture::nvIFR.nvIFROGLTransferFramebufferToSys(
+			m_hSysTransferObject, drawFBO, GL_COLOR_ATTACHMENT0_EXT, NV_IFROGL_TRANSFER_FRAMEBUFFER_FLAG_NONE, 0, 0, 0, 0) != NV_IFROGL_SUCCESS)
+	{
+		fprintf(stderr, "Failed to transfer data from the framebuffer.\n");
+		print_nvifr_error();
+		exit(-1);
+	}
+
+	printf("Now lock transfer object.\n");
+
+	// lock the transferred data
+	if (XCapture::nvIFR.nvIFROGLLockTransferData(m_hSysTransferObject, &dataSize,
+												 &data) != NV_IFROGL_SUCCESS)
+	{
+		fprintf(stderr, "Failed to lock the transferred data.\n");
+	}
+
+	// release the data buffer
+	if (XCapture::nvIFR.nvIFROGLReleaseTransferData(m_hSysTransferObject) !=
+		NV_IFROGL_SUCCESS)
+	{
+		fprintf(stderr, "Failed to release the transferred data.\n");
+	}
+}
 
 // This just wraps the VGLTrans class in order to demonstrate how to build a
 // custom transport plugin for VGL and also to serve as a sanity check for the
 // plugin API
-
 extern "C"
 {
 
@@ -52,14 +183,18 @@ extern "C"
 		XCapture::nvIFR.initialize();
 
 		printf("Call CreateEncSession\n");
-		NV_IFROGL_SESSION_HANDLE m_hSession;
+
+		// A session is required. The session is associated with the current OpenGL
+		// context.
 		if (XCapture::nvIFR.nvIFROGLCreateSession(&m_hSession, NULL) !=
 			NV_IFROGL_SUCCESS)
 		{
 			printf("Failed to create a NvIFROGL session.\n");
 			return (void *)thing;
 		}
-		printf("FAILS TO GET HERE: Done CreateEncSession\n");
+
+		setupNVIFRHwEnc();
+		setupNVIFRSYS();
 
 		return (void *)thing;
 	}
@@ -84,6 +219,7 @@ extern "C"
 		// TODO this * 3 is a guess! 1 byte for r/g/b? I dunno!
 		rr_frame.pitch = width * 3;
 		// kinda rorrect.. should work I think..
+
 		return &rr_frame;
 	}
 
@@ -104,6 +240,8 @@ extern "C"
 	int RRTransSendFrame(void *handle, RRFrame *frame, int sync)
 	{
 		printf("RRTransSendFrame!\n");
+		captureSys();
+
 		// Return 0 for success
 		return 0;
 	}
