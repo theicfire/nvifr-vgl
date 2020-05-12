@@ -1,7 +1,7 @@
 set -ex
 
 export LD_LIBRARY_PATH=`pwd`
-g++ -I../virtualgl-2.6.3/include/ -I../virtualgl-2.6.3/common/ -I/opt/libjpeg-turbo/include/ -I../virtualgl-2.6.3/build/include/ \
+g++ -I../virtualgl/include/ -I../virtualgl/server/ -I../virtualgl/common/ -I/opt/libjpeg-turbo/include/ -I../virtualgl/build/include/ \
 -c -Wall -fpic testplugin.cpp
 
 g++ -shared \

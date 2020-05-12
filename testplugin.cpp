@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <X11/Xlib.h>
 #include "rrtransport.h"
-#include "../virtualgl-2.6.3/server/VGLTrans.h"
+#include "VGLTrans.h"
 // #include "./encoder/encoder.h"
 #include "nvifr-encoder/XCapture.h"
 
@@ -23,6 +23,7 @@ static Error err;
 char errStr[MAXSTR + 14];
 unsigned char rrframe_bits[300 * 300 * 3];
 uint8_t thing[10];
+FILE *m_fpOut;
 
 static FakerConfig *fconfig = NULL;
 
@@ -98,7 +99,11 @@ void captureHwEnc()
 {
 	GLint drawFBO;
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFBO);
-	printf("fbo is %d\n", drawFBO);
+
+	GLenum readBuffer;
+	glGetIntegerv(GL_READ_BUFFER, (GLint *)&readBuffer);
+
+	printf("fbo is %d, readBuffer is %d\n", drawFBO, readBuffer);
 
 	uintptr_t dataSize;
 	const void *data;
@@ -107,13 +112,12 @@ void captureHwEnc()
 	// if (XCapture::nvIFR.nvIFROGLTransferFramebufferToHwEnc(
 	// 		m_hTransferObject, NULL, 0, GL_FRONT_LEFT, GL_NONE) != NV_IFROGL_SUCCESS)
 	if (XCapture::nvIFR.nvIFROGLTransferFramebufferToHwEnc(
-			m_hTransferObject, NULL, drawFBO, GL_COLOR_ATTACHMENT0_EXT, GL_NONE) != NV_IFROGL_SUCCESS)
+			m_hTransferObject, NULL, drawFBO, GL_BACK_LEFT, GL_NONE) != NV_IFROGL_SUCCESS)
 	{
 		fprintf(stderr, "Failed to transfer data from the framebuffer.\n");
 		print_nvifr_error();
 		exit(-1);
 	}
-
 
 	printf("Now lock transfer object.\n");
 
@@ -124,7 +128,9 @@ void captureHwEnc()
 		fprintf(stderr, "Failed to lock the transferred data.\n");
 	}
 
-	printf("FAILS to get here.\n");
+	// write to the file
+	if (m_fpOut)
+		fwrite(data, 1, dataSize, m_fpOut);
 
 	// release the data buffer
 	if (XCapture::nvIFR.nvIFROGLReleaseTransferData(m_hTransferObject) !=
@@ -132,6 +138,7 @@ void captureHwEnc()
 	{
 		fprintf(stderr, "Failed to release the transferred data.\n");
 	}
+	printf("Done with captureHwEnc\n");
 }
 
 void captureSys()
@@ -140,7 +147,7 @@ void captureSys()
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFBO);
 
 	GLenum readBuffer;
-	glGetIntegerv(GL_READ_BUFFER, (GLint*) &readBuffer);
+	glGetIntegerv(GL_READ_BUFFER, (GLint *)&readBuffer);
 
 	printf("fbo is %d, readBuffer is %d\n", drawFBO, readBuffer);
 
@@ -196,6 +203,26 @@ extern "C"
 	int RRTransConnect(void *handle, char *receiverName, int port)
 	{
 		printf("RRTransConnect!\n");
+
+		XCapture::nvIFR.initialize();
+		if (XCapture::nvIFR.nvIFROGLCreateSession(&m_hSession, NULL) !=
+			NV_IFROGL_SUCCESS)
+		{
+			printf("Failed to create a NvIFROGL session.\n");
+			return 0;
+		}
+
+		m_fpOut = fopen("cool.h264", "wb");
+		if (m_fpOut == NULL)
+		{
+			fprintf(stderr, "Failed to create output file.\n");
+			exit(-1);
+		}
+
+		// setupNVIFRSYS();
+		setupNVIFRHwEnc();
+
+		printf("Done RRTransConnect!\n");
 		// Return 0 for success
 		return 0;
 	}
@@ -240,15 +267,8 @@ extern "C"
 		// printf("Start sleep\n");
 		// sleep(10);
 		// printf("End sleep\n");
-		XCapture::nvIFR.initialize();
-		if (XCapture::nvIFR.nvIFROGLCreateSession(&m_hSession, NULL) !=
-			NV_IFROGL_SUCCESS)
-		{
-			printf("Failed to create a NvIFROGL session.\n");
-			return 0;
-		}
-		setupNVIFRSYS();
-		captureSys();
+		// captureSys();
+		captureHwEnc();
 		printf("RRTransSendFrame Done!\n");
 
 		// Return 0 for success
