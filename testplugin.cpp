@@ -138,7 +138,11 @@ void captureSys()
 {
 	GLint drawFBO;
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFBO);
-	printf("fbo is %d\n", drawFBO);
+
+	GLenum readBuffer;
+	glGetIntegerv(GL_READ_BUFFER, (GLint*) &readBuffer);
+
+	printf("fbo is %d, readBuffer is %d\n", drawFBO, readBuffer);
 
 	uintptr_t dataSize;
 	const void *data;
@@ -147,7 +151,7 @@ void captureSys()
 	// if (XCapture::nvIFR.nvIFROGLTransferFramebufferToSys(
 	// 		m_hSysTransferObject, 0, GL_FRONT_LEFT, NV_IFROGL_TRANSFER_FRAMEBUFFER_FLAG_NONE, 0, 0, 0, 0) != NV_IFROGL_SUCCESS)
 	if (XCapture::nvIFR.nvIFROGLTransferFramebufferToSys(
-			m_hSysTransferObject, drawFBO, GL_COLOR_ATTACHMENT0_EXT, NV_IFROGL_TRANSFER_FRAMEBUFFER_FLAG_NONE, 0, 0, 0, 0) != NV_IFROGL_SUCCESS)
+			m_hSysTransferObject, drawFBO, GL_BACK_LEFT, NV_IFROGL_TRANSFER_FRAMEBUFFER_FLAG_NONE, 0, 0, 0, 0) != NV_IFROGL_SUCCESS)
 	{
 		fprintf(stderr, "Failed to transfer data from the framebuffer.\n");
 		print_nvifr_error();
@@ -162,6 +166,7 @@ void captureSys()
 	{
 		fprintf(stderr, "Failed to lock the transferred data.\n");
 	}
+	printf("Done locking transfer object.\n");
 
 	// release the data buffer
 	if (XCapture::nvIFR.nvIFROGLReleaseTransferData(m_hSysTransferObject) !=
@@ -180,21 +185,10 @@ extern "C"
 	void *RRTransInit(Display *dpy, Window win_, FakerConfig *fconfig_)
 	{
 		printf("Hit RRTransInit!\n");
-		XCapture::nvIFR.initialize();
 
-		printf("Call CreateEncSession\n");
+		// printf("Call CreateEncSession\n");
 
-		// A session is required. The session is associated with the current OpenGL
-		// context.
-		if (XCapture::nvIFR.nvIFROGLCreateSession(&m_hSession, NULL) !=
-			NV_IFROGL_SUCCESS)
-		{
-			printf("Failed to create a NvIFROGL session.\n");
-			return (void *)thing;
-		}
-
-		setupNVIFRHwEnc();
-		setupNVIFRSYS();
+		// setupNVIFRHwEnc();
 
 		return (void *)thing;
 	}
@@ -239,8 +233,23 @@ extern "C"
 
 	int RRTransSendFrame(void *handle, RRFrame *frame, int sync)
 	{
-		printf("RRTransSendFrame!\n");
+		printf("hmm RRTransSendFrame!\n");
+
+		// A session is required. The session is associated with the current OpenGL
+		// context.
+		// printf("Start sleep\n");
+		// sleep(10);
+		// printf("End sleep\n");
+		XCapture::nvIFR.initialize();
+		if (XCapture::nvIFR.nvIFROGLCreateSession(&m_hSession, NULL) !=
+			NV_IFROGL_SUCCESS)
+		{
+			printf("Failed to create a NvIFROGL session.\n");
+			return 0;
+		}
+		setupNVIFRSYS();
 		captureSys();
+		printf("RRTransSendFrame Done!\n");
 
 		// Return 0 for success
 		return 0;
