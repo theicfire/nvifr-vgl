@@ -1,10 +1,3 @@
-/**
-* Run this inside of virtualgl-2.6.3/server:
-* g++ -I../include/ -I../common/ -I/opt/libjpeg-turbo/include/ -I../build/include/  -c -Wall -fpic testplugin.cpp
-* g++ -shared -o ~/libvgltrans_hello.so testplugin.o
-* vglrun -v -trans hello -d :1 glxgears # Not this is a random 3D program installed by default on Ubuntu
-*/
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <X11/Xlib.h>
