@@ -21,7 +21,6 @@ int get_frame_count = 0;
 
 static Error err;
 char errStr[MAXSTR + 14];
-unsigned char rrframe_bits[300 * 300 * 3];
 uint8_t thing[10];
 FILE *m_fpOut;
 
@@ -69,29 +68,29 @@ void setupNVIFRSYS()
 	}
 }
 
-void setupNVIFRHwEnc()
+void setupNVIFRHwEnc(int width, int height)
 {
-	memset(&config, 0, sizeof(config));
+	if (!config.profile) {
+		config.profile = 100;
+		config.frameRateNum = 30;
+		config.frameRateDen = 1;
+		config.width = width;
+		config.height = height;
+		config.avgBitRate = width * height * 30 * 12 / 8;
 
-	config.profile = 100;
-	config.frameRateNum = 30;
-	config.frameRateDen = 1;
-	config.width = 300;
-	config.height = 300;
-	config.avgBitRate = 300 * 300 * 30 * 12 / 8;
+		config.GOPLength = 75;
+		config.rateControl = NV_IFROGL_HW_ENC_RATE_CONTROL_CBR;
+		config.stereoFormat = NV_IFROGL_HW_ENC_STEREO_NONE;
+		config.VBVBufferSize = config.avgBitRate;
+		config.VBVInitialDelay = config.avgBitRate;
+		config.codecType = codecType;
 
-	config.GOPLength = 75;
-	config.rateControl = NV_IFROGL_HW_ENC_RATE_CONTROL_CBR;
-	config.stereoFormat = NV_IFROGL_HW_ENC_STEREO_NONE;
-	config.VBVBufferSize = config.avgBitRate;
-	config.VBVInitialDelay = config.avgBitRate;
-	config.codecType = codecType;
-
-	if (XCapture::nvIFR.nvIFROGLCreateTransferToHwEncObject(
-			m_hSession, &config, &m_hTransferObject) != NV_IFROGL_SUCCESS)
-	{
-		printf("Failed to create a NvIFROGL transfer object. w=%d, h=%d\n",
-			   config.width, config.height);
+		if (XCapture::nvIFR.nvIFROGLCreateTransferToHwEncObject(
+				m_hSession, &config, &m_hTransferObject) != NV_IFROGL_SUCCESS)
+		{
+			printf("Failed to create a NvIFROGL transfer object. w=%d, h=%d\n",
+				   config.width, config.height);
+		}
 	}
 }
 
@@ -197,6 +196,9 @@ extern "C"
 
 		// setupNVIFRHwEnc();
 
+		memset(&rr_frame, 0, sizeof(RRFrame));
+		memset(&config, 0, sizeof(config));
+
 		return (void *)thing;
 	}
 
@@ -220,7 +222,6 @@ extern "C"
 		}
 
 		// setupNVIFRSYS();
-		setupNVIFRHwEnc();
 
 		printf("Done RRTransConnect!\n");
 		// Return 0 for success
@@ -232,14 +233,15 @@ extern "C"
 	{
 		get_frame_count += 1;
 		printf("RRTransGetFrame! w: %d, h: %d, format: %d, stereo: %d. Call count: %d\n", width, height, format, stereo, get_frame_count);
-		rr_frame.bits = rrframe_bits;
-		rr_frame.rbits = nullptr;
-		rr_frame.format = format;
-		rr_frame.w = width;
-		rr_frame.h = height;
-		// TODO this * 3 is a guess! 1 byte for r/g/b? I dunno!
-		rr_frame.pitch = width * 3;
-		// kinda rorrect.. should work I think..
+		if (!rr_frame.bits) {
+			rr_frame.w = width;
+			rr_frame.h = height;
+			rr_frame.pitch = width * rrtrans_ps[format];
+			rr_frame.bits = new unsigned char[height * rr_frame.pitch];
+			rr_frame.rbits = nullptr;
+			rr_frame.format = format;
+		}
+		setupNVIFRHwEnc(width, height);
 
 		return &rr_frame;
 	}
@@ -278,6 +280,7 @@ extern "C"
 	int RRTransDestroy(void *handle)
 	{
 		printf("RRTransDestroy!\n");
+		delete [] rr_frame.bits;  rr_frame.bits = nullptr;
 		// Return 0 for success
 		return 0;
 	}
