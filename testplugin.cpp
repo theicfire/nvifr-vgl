@@ -20,7 +20,7 @@ using namespace vglserver;
 int get_frame_count = 0;
 
 static Error err;
-char errStr[MAXSTR + 14];
+char errStr[MAXSTR + 14], errStrTmp[256];
 uint8_t thing[10];
 FILE *m_fpOut;
 
@@ -45,13 +45,13 @@ NV_IFROGL_TRANSFEROBJECT_HANDLE m_hSysTransferObject = nullptr;
 
 FakerConfig *fconfig_getinstance(void) { return fconfig; }
 
-void print_nvifr_error()
+void throw_nvifr_error(const char *msg)
 {
-	char errorString[200];
-	memset(errorString, 0, 200);
 	unsigned int returnedLen, remainingBytes;
-	XCapture::nvIFR.nvIFROGLGetError(errorString, 200, &returnedLen, &remainingBytes);
-	printf("nvifrogl error: %s", errorString);
+	snprintf(errStrTmp, 256, "%s\nnvifrogl error: ", msg);
+	XCapture::nvIFR.nvIFROGLGetError(&errStrTmp[strlen(errStrTmp)],
+		256 - strlen(errStrTmp), &returnedLen, &remainingBytes);
+	THROW(errStrTmp);
 }
 
 void setupNVIFRSYS()
@@ -62,9 +62,10 @@ void setupNVIFRSYS()
 			 m_hSession, &to_sys_config, &m_hSysTransferObject)) !=
 		NV_IFROGL_SUCCESS)
 	{
-		printf("Lame! NvIFROGLCreateRawSession Failed to create a transfer object "
-			   "with code %d. ",
-			   ret);
+		snprintf(errStrTmp, 256,
+			"Lame! NvIFROGLCreateRawSession Failed to create a transfer object "
+			"with code %d.", ret);
+		THROW(errStrTmp);
 	}
 }
 
@@ -88,8 +89,10 @@ void setupNVIFRHwEnc(int width, int height)
 		if (XCapture::nvIFR.nvIFROGLCreateTransferToHwEncObject(
 				m_hSession, &config, &m_hTransferObject) != NV_IFROGL_SUCCESS)
 		{
-			printf("Failed to create a NvIFROGL transfer object. w=%d, h=%d\n",
-				   config.width, config.height);
+			snprintf(errStrTmp, 256,
+				"Failed to create a NvIFROGL transfer object. w=%d, h=%d\n",
+				config.width, config.height);
+			THROW(errStrTmp);
 		}
 	}
 }
@@ -102,7 +105,7 @@ void captureHwEnc()
 	GLenum readBuffer;
 	glGetIntegerv(GL_READ_BUFFER, (GLint *)&readBuffer);
 
-	printf("fbo is %d, readBuffer is %d\n", drawFBO, readBuffer);
+	fprintf(stderr, "fbo is %d, readBuffer is %d\n", drawFBO, readBuffer);
 
 	uintptr_t dataSize;
 	const void *data;
@@ -113,18 +116,16 @@ void captureHwEnc()
 	if (XCapture::nvIFR.nvIFROGLTransferFramebufferToHwEnc(
 			m_hTransferObject, NULL, drawFBO, GL_BACK_LEFT, GL_NONE) != NV_IFROGL_SUCCESS)
 	{
-		fprintf(stderr, "Failed to transfer data from the framebuffer.\n");
-		print_nvifr_error();
-		exit(-1);
+		throw_nvifr_error("Failed to transfer data from the framebuffer.");
 	}
 
-	printf("Now lock transfer object.\n");
+	fprintf(stderr, "Now lock transfer object.\n");
 
 	// lock the transferred data
 	if (XCapture::nvIFR.nvIFROGLLockTransferData(m_hTransferObject, &dataSize,
 												 &data) != NV_IFROGL_SUCCESS)
 	{
-		fprintf(stderr, "Failed to lock the transferred data.\n");
+		THROW("Failed to lock the transferred data.");
 	}
 
 	// write to the file
@@ -135,9 +136,9 @@ void captureHwEnc()
 	if (XCapture::nvIFR.nvIFROGLReleaseTransferData(m_hTransferObject) !=
 		NV_IFROGL_SUCCESS)
 	{
-		fprintf(stderr, "Failed to release the transferred data.\n");
+		THROW("Failed to release the transferred data.");
 	}
-	printf("Done with captureHwEnc\n");
+	fprintf(stderr, "Done with captureHwEnc\n");
 }
 
 void captureSys()
@@ -148,7 +149,7 @@ void captureSys()
 	GLenum readBuffer;
 	glGetIntegerv(GL_READ_BUFFER, (GLint *)&readBuffer);
 
-	printf("fbo is %d, readBuffer is %d\n", drawFBO, readBuffer);
+	fprintf(stderr, "fbo is %d, readBuffer is %d\n", drawFBO, readBuffer);
 
 	uintptr_t dataSize;
 	const void *data;
@@ -159,26 +160,24 @@ void captureSys()
 	if (XCapture::nvIFR.nvIFROGLTransferFramebufferToSys(
 			m_hSysTransferObject, drawFBO, GL_BACK_LEFT, NV_IFROGL_TRANSFER_FRAMEBUFFER_FLAG_NONE, 0, 0, 0, 0) != NV_IFROGL_SUCCESS)
 	{
-		fprintf(stderr, "Failed to transfer data from the framebuffer.\n");
-		print_nvifr_error();
-		exit(-1);
+		throw_nvifr_error("Failed to transfer data from the framebuffer.");
 	}
 
-	printf("Now lock transfer object.\n");
+	fprintf(stderr, "Now lock transfer object.\n");
 
 	// lock the transferred data
 	if (XCapture::nvIFR.nvIFROGLLockTransferData(m_hSysTransferObject, &dataSize,
 												 &data) != NV_IFROGL_SUCCESS)
 	{
-		fprintf(stderr, "Failed to lock the transferred data.\n");
+		THROW("Failed to lock the transferred data.");
 	}
-	printf("Done locking transfer object.\n");
+	fprintf(stderr, "Done locking transfer object.\n");
 
 	// release the data buffer
 	if (XCapture::nvIFR.nvIFROGLReleaseTransferData(m_hSysTransferObject) !=
 		NV_IFROGL_SUCCESS)
 	{
-		fprintf(stderr, "Failed to release the transferred data.\n");
+		THROW("Failed to release the transferred data.");
 	}
 }
 
@@ -190,9 +189,9 @@ extern "C"
 
 	void *RRTransInit(Display *dpy, Window win_, FakerConfig *fconfig_)
 	{
-		printf("Hit RRTransInit!\n");
+		fprintf(stderr, "Hit RRTransInit!\n");
 
-		// printf("Call CreateEncSession\n");
+		// fprintf(stderr, "Call CreateEncSession\n");
 
 		// setupNVIFRHwEnc();
 
@@ -204,26 +203,31 @@ extern "C"
 
 	int RRTransConnect(void *handle, char *receiverName, int port)
 	{
-		printf("RRTransConnect!\n");
+		fprintf(stderr, "RRTransConnect!\n");
 
-		XCapture::nvIFR.initialize();
-		if (XCapture::nvIFR.nvIFROGLCreateSession(&m_hSession, NULL) !=
-			NV_IFROGL_SUCCESS)
+		try
 		{
-			printf("Failed to create a NvIFROGL session.\n");
-			return 0;
+			XCapture::nvIFR.initialize();
+			if (XCapture::nvIFR.nvIFROGLCreateSession(&m_hSession, NULL) !=
+				NV_IFROGL_SUCCESS)
+			{
+				THROW("Failed to create a NvIFROGL session.");
+			}
+
+			m_fpOut = fopen("cool.h264", "wb");
+			if (m_fpOut == NULL)
+			{
+				THROW("Failed to create output file.");
+			}
+
+			// setupNVIFRSYS();
+		}
+		catch(Error &e)
+		{
+			err = e;  return -1;
 		}
 
-		m_fpOut = fopen("cool.h264", "wb");
-		if (m_fpOut == NULL)
-		{
-			fprintf(stderr, "Failed to create output file.\n");
-			exit(-1);
-		}
-
-		// setupNVIFRSYS();
-
-		printf("Done RRTransConnect!\n");
+		fprintf(stderr, "Done RRTransConnect!\n");
 		// Return 0 for success
 		return 0;
 	}
@@ -232,7 +236,7 @@ extern "C"
 							 int stereo)
 	{
 		get_frame_count += 1;
-		printf("RRTransGetFrame! w: %d, h: %d, format: %d, stereo: %d. Call count: %d\n", width, height, format, stereo, get_frame_count);
+		fprintf(stderr, "RRTransGetFrame! w: %d, h: %d, format: %d, stereo: %d. Call count: %d\n", width, height, format, stereo, get_frame_count);
 		if (!rr_frame.bits) {
 			rr_frame.w = width;
 			rr_frame.h = height;
@@ -241,37 +245,53 @@ extern "C"
 			rr_frame.rbits = nullptr;
 			rr_frame.format = format;
 		}
-		setupNVIFRHwEnc(width, height);
+		try
+		{
+			setupNVIFRHwEnc(width, height);
+		}
+		catch(Error &e)
+		{
+			err = e;  return NULL;
+		}
+
 
 		return &rr_frame;
 	}
 
 	int RRTransReady(void *handle)
 	{
-		printf("RRTransReady!\n");
+		fprintf(stderr, "RRTransReady!\n");
 		// Return 1 for "ready"
 		return 1;
 	}
 
 	int RRTransSynchronize(void *handle)
 	{
-		printf("RRTransSynchronize!\n");
+		fprintf(stderr, "RRTransSynchronize!\n");
 		// Return 0 for success
 		return 0;
 	}
 
 	int RRTransSendFrame(void *handle, RRFrame *frame, int sync)
 	{
-		printf("hmm RRTransSendFrame!\n");
+		fprintf(stderr, "hmm RRTransSendFrame!\n");
 
 		// A session is required. The session is associated with the current OpenGL
 		// context.
-		// printf("Start sleep\n");
+		// fprintf(stderr, "Start sleep\n");
 		// sleep(10);
-		// printf("End sleep\n");
+		// fprintf(stderr, "End sleep\n");
 		// captureSys();
-		captureHwEnc();
-		printf("RRTransSendFrame Done!\n");
+		try
+		{
+			captureHwEnc();
+		}
+		catch(Error &e)
+		{
+			err = e;  return -1;
+		}
+
+		fprintf(stderr, "RRTransSendFrame Done!\n");
 
 		// Return 0 for success
 		return 0;
@@ -279,7 +299,7 @@ extern "C"
 
 	int RRTransDestroy(void *handle)
 	{
-		printf("RRTransDestroy!\n");
+		fprintf(stderr, "RRTransDestroy!\n");
 		delete [] rr_frame.bits;  rr_frame.bits = nullptr;
 		// Return 0 for success
 		return 0;
@@ -287,9 +307,9 @@ extern "C"
 
 	const char *RRTransGetError(void)
 	{
-		printf("RRTransGetError!\n");
+		fprintf(stderr, "RRTransGetError!\n");
 		snprintf(errStr, MAXSTR + 14, "Error in %s -- %s",
-				 err.getMethod(), err.getMessage());
+			err.getMethod(), err.getMessage());
 		return errStr;
 	}
 
