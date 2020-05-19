@@ -9,13 +9,11 @@
 #include <stdlib.h>
 #include <X11/Xlib.h>
 #include "rrtransport.h"
-#include "VGLTrans.h"
+#include "Error.h"
 // #include "./encoder/encoder.h"
 #include "nvifr-encoder/XCapture.h"
 
 using namespace vglutil;
-using namespace vglcommon;
-using namespace vglserver;
 
 int get_frame_count = 0;
 
@@ -24,17 +22,6 @@ char errStr[MAXSTR + 14], errStrTmp[256];
 uint8_t thing[10];
 FILE *m_fpOut;
 
-static FakerConfig *fconfig = NULL;
-
-static const int trans2pf[RRTRANS_FORMATOPT] =
-	{
-		PF_RGB, PF_RGBX, PF_BGR, PF_BGRX, PF_XBGR, PF_XRGB};
-
-static const int pf2trans[PIXELFORMATS] =
-	{
-		RRTRANS_RGB, RRTRANS_RGBA, RRTRANS_BGR, RRTRANS_BGRA, RRTRANS_ABGR,
-		RRTRANS_ARGB, RRTRANS_RGB};
-
 RRFrame rr_frame;
 NV_IFROGL_SESSION_HANDLE m_hSession;
 static NV_IFROGL_HW_ENC_TYPE codecType = NV_IFROGL_HW_ENC_H264;
@@ -42,8 +29,6 @@ NV_IFROGL_TRANSFEROBJECT_HANDLE m_hTransferObject = nullptr;
 NV_IFROGL_HW_ENC_CONFIG config;
 NV_IFROGL_TO_SYS_CONFIG to_sys_config;
 NV_IFROGL_TRANSFEROBJECT_HANDLE m_hSysTransferObject = nullptr;
-
-FakerConfig *fconfig_getinstance(void) { return fconfig; }
 
 void throw_nvifr_error(const char *msg)
 {
