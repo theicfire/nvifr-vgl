@@ -51,7 +51,8 @@ class GPUEncTrans
 	public:
 		GPUEncTrans(Display *dpy_, Window win_, FakerConfig *fconfig_) :
 			m_fpOut(NULL), m_hSession(NULL), m_hTransferObject(NULL),
-			m_hSysTransferObject(NULL), dpy(dpy_), win(win_), fconfig(fconfig_)
+			m_hSysTransferObject(NULL), dpy(dpy_), win(win_), fconfig(fconfig_),
+			alreadyWarnedRenderMode(false)
 		{
 			memset(&rr_frame, 0, sizeof(RRFrame));
 			char tmp[256];
@@ -70,7 +71,6 @@ class GPUEncTrans
 			if (m_hSysTransferObject)
 				XCapture::nvIFR.nvIFROGLDestroyTransferObject(m_hSysTransferObject);
 			if (m_hSession) XCapture::nvIFR.nvIFROGLDestroySession(m_hSession);
-			if (rr_frame.bits) delete [] rr_frame.bits;
 			if (m_fpOut) fclose(m_fpOut);
 		}
 
@@ -79,8 +79,7 @@ class GPUEncTrans
 			rr_frame.w = width;
 			rr_frame.h = height;
 			rr_frame.pitch = width * rrtrans_ps[format];
-			if (rr_frame.bits) delete [] rr_frame.bits;
-			rr_frame.bits = new unsigned char[height * rr_frame.pitch];
+			rr_frame.bits = nullptr;
 			rr_frame.rbits = nullptr;
 			rr_frame.format = format;
 			return &rr_frame;
@@ -104,6 +103,7 @@ class GPUEncTrans
 		Display *dpy;
 		Window win;
 		FakerConfig *fconfig;
+		bool alreadyWarnedRenderMode;
 };
 
 void GPUEncTrans::throw_nvifr_error(const char *msg)
@@ -186,12 +186,26 @@ void GPUEncTrans::captureHwEnc()
 
 	GLenum readBuffer;
 	glGetIntegerv(GL_READ_BUFFER, (GLint *)&readBuffer);
+	if (readBuffer == GL_BACK) readBuffer = GL_BACK_LEFT;
+	else if (readBuffer == GL_FRONT) readBuffer = GL_FRONT_LEFT;
+
+	int renderMode = 0;
+	glGetIntegerv(GL_RENDER_MODE, &renderMode);
+	if (renderMode != GL_RENDER && renderMode != 0)
+	{
+		if(!alreadyWarnedRenderMode && fconfig->verbose)
+		{
+			fprintf(stderr, "WARNING: One or more readbacks skipped because render mode != GL_RENDER.\n");
+			alreadyWarnedRenderMode = true;
+		}
+		return;
+	}
 
 	uintptr_t dataSize;
 	const void *data;
 
 	if (XCapture::nvIFR.nvIFROGLTransferFramebufferToHwEnc(m_hTransferObject,
-		NULL, drawFBO, GL_BACK_LEFT, GL_NONE) != NV_IFROGL_SUCCESS)
+		NULL, drawFBO, readBuffer, GL_NONE) != NV_IFROGL_SUCCESS)
 	{
 		throw_nvifr_error("Failed to transfer data from the framebuffer.");
 	}
@@ -222,12 +236,26 @@ void GPUEncTrans::captureSys()
 
 	GLenum readBuffer;
 	glGetIntegerv(GL_READ_BUFFER, (GLint *)&readBuffer);
+	if (readBuffer == GL_BACK) readBuffer = GL_BACK_LEFT;
+	else if (readBuffer == GL_FRONT) readBuffer = GL_FRONT_LEFT;
+
+	int renderMode = 0;
+	glGetIntegerv(GL_RENDER_MODE, &renderMode);
+	if (renderMode != GL_RENDER && renderMode != 0)
+	{
+		if(!alreadyWarnedRenderMode && fconfig->verbose)
+		{
+			fprintf(stderr, "WARNING: One or more readbacks skipped because render mode != GL_RENDER.\n");
+			alreadyWarnedRenderMode = true;
+		}
+		return;
+	}
 
 	uintptr_t dataSize;
 	const void *data;
 
 	if (XCapture::nvIFR.nvIFROGLTransferFramebufferToSys(m_hSysTransferObject,
-		drawFBO, GL_BACK_LEFT, NV_IFROGL_TRANSFER_FRAMEBUFFER_FLAG_NONE, 0, 0, 0,
+		drawFBO, readBuffer, NV_IFROGL_TRANSFER_FRAMEBUFFER_FLAG_NONE, 0, 0, 0,
 		0) != NV_IFROGL_SUCCESS)
 	{
 		throw_nvifr_error("Failed to transfer data from the framebuffer.");
@@ -276,15 +304,6 @@ extern "C"
 	{
 		GPUEncTrans *trans = (GPUEncTrans *)handle;
 		if(!trans) THROW("Invalid handle");
-		try
-		{
-			// trans->setupNVIFRSYS();
-			trans->setupNVIFRHwEnc(width, height);
-		}
-		catch(Error &e)
-		{
-			err = e;  return NULL;
-		}
 		return trans->getFrame(width, height, format);
 	}
 
@@ -309,7 +328,9 @@ extern "C"
 			// A session is required. The session is associated with the current
 			// OpenGL context.
 			// sleep(10);
+			// trans->setupNVIFRSYS();
 			// trans->captureSys();
+			trans->setupNVIFRHwEnc(frame->w, frame->h);
 			trans->captureHwEnc();
 		}
 		catch(Error &e)
