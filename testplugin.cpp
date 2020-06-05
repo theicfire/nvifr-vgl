@@ -42,8 +42,7 @@
 
 using namespace vglutil;
 
-static Error err;
-static char errStr[MAXSTR + 14];
+static __thread char errStr[MAXSTR + 14];
 static NV_IFROGL_HW_ENC_TYPE codecType = NV_IFROGL_HW_ENC_H264;
 
 class GPUEncTrans
@@ -288,7 +287,9 @@ extern "C"
 		}
 		catch(Error &e)
 		{
-			err = e;  return NULL;
+			snprintf(errStr, MAXSTR + 14, "Error in %s -- %s", e.getMethod(),
+				e.getMessage());
+			return NULL;
 		}
 		return retval;
 	}
@@ -302,9 +303,18 @@ extern "C"
 	RRFrame *RRTransGetFrame(void *handle, int width, int height, int format,
 		int stereo)
 	{
-		GPUEncTrans *trans = (GPUEncTrans *)handle;
-		if(!trans) THROW("Invalid handle");
-		return trans->getFrame(width, height, format);
+		try
+		{
+			GPUEncTrans *trans = (GPUEncTrans *)handle;
+			if(!trans) THROW("Invalid handle");
+			return trans->getFrame(width, height, format);
+		}
+		catch(Error &e)
+		{
+			snprintf(errStr, MAXSTR + 14, "Error in %s -- %s", e.getMethod(),
+				e.getMessage());
+			return NULL;
+		}
 	}
 
 	int RRTransReady(void *handle)
@@ -335,7 +345,9 @@ extern "C"
 		}
 		catch(Error &e)
 		{
-			err = e;  return -1;
+			snprintf(errStr, MAXSTR + 14, "Error in %s -- %s", e.getMethod(),
+				e.getMessage());
+			return -1;
 		}
 		// Return 0 for success
 		return 0;
@@ -351,7 +363,9 @@ extern "C"
 		}
 		catch(Error &e)
 		{
-			err = e;  return -1;
+			snprintf(errStr, MAXSTR + 14, "Error in %s -- %s", e.getMethod(),
+				e.getMessage());
+			return -1;
 		}
 		// Return 0 for success
 		return 0;
@@ -359,8 +373,6 @@ extern "C"
 
 	const char *RRTransGetError(void)
 	{
-		snprintf(errStr, MAXSTR + 14, "Error in %s -- %s",
-			err.getMethod(), err.getMessage());
 		return errStr;
 	}
 
