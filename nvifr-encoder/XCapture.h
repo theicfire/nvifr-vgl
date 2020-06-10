@@ -12,11 +12,10 @@
 #include <vector>
 #include "utils.h"
 
-#include <GL/glew.h>
 #include <GL/glx.h>
 #include <GL/glxproto.h>
 
-#include <GL/gl.h> // Place after glew/glx!
+#include <GL/gl.h> // Place after glx!
 
 #include "NvIFROpenGL.h"
 #include "NvIFR_API.h"

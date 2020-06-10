@@ -70,8 +70,6 @@ bool XCapture::InitializeGL(Window window) {
   m_iWidth = attr.width;
   m_iHeight = attr.height;
 
-  // Init OpenGL
-  glewInit();
   // cudaGLSetDevice(0);
   glClearColor(0.0, 0.0, 0.0, 1.0);  // 1.0 => A for color conversion matrix
   glClear(GL_COLOR_BUFFER_BIT);

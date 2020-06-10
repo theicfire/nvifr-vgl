@@ -4,8 +4,8 @@ TARGET = NVIFROpenGLChrome
 ARCH = $(shell getconf LONG_BIT)
 
 CXX = g++
-CXXFLAGS = -g -Wall -DGLEW_STATIC
-LIBS = -lnvidia-ifr -lGL -lGLEW -lX11 
+CXXFLAGS = -g -Wall
+LIBS = -lnvidia-ifr -lGL -lX11
 
 .PHONY: default all clean
 
