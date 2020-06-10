@@ -40,6 +40,9 @@
 #include "Error.h"
 #include "nvifr-encoder/XCapture.h"
 
+extern "C" void _vgl_disableFaker(void) __attribute__((weak));
+extern "C" void _vgl_enableFaker(void) __attribute__((weak));
+
 using namespace vglutil;
 
 static __thread char errStr[MAXSTR + 14];
@@ -280,57 +283,69 @@ extern "C"
 
 	void *RRTransInit(Display *dpy, Window win, FakerConfig *fconfig)
 	{
-		void *retval = NULL;
+		_vgl_disableFaker();
+
+		void *handle = NULL;
 		try
 		{
-			retval = (void *)(new GPUEncTrans(dpy, win, fconfig));
+			handle = (void *)(new GPUEncTrans(dpy, win, fconfig));
 		}
 		catch(Error &e)
 		{
 			snprintf(errStr, MAXSTR + 14, "Error in %s -- %s", e.getMethod(),
 				e.getMessage());
-			return NULL;
+			handle = NULL;
 		}
-		return retval;
+
+		_vgl_enableFaker();
+
+		return handle;
 	}
 
 	int RRTransConnect(void *handle, char *receiverName, int port)
 	{
-		// Return 0 for success
 		return 0;
 	}
 
 	RRFrame *RRTransGetFrame(void *handle, int width, int height, int format,
 		int stereo)
 	{
+		_vgl_disableFaker();
+
+		RRFrame *frame = NULL;
 		try
 		{
 			GPUEncTrans *trans = (GPUEncTrans *)handle;
 			if(!trans) THROW("Invalid handle");
-			return trans->getFrame(width, height, format);
+			frame = trans->getFrame(width, height, format);
 		}
 		catch(Error &e)
 		{
 			snprintf(errStr, MAXSTR + 14, "Error in %s -- %s", e.getMethod(),
 				e.getMessage());
-			return NULL;
+			frame = NULL;
 		}
+
+		_vgl_enableFaker();
+
+		return frame;
 	}
 
 	int RRTransReady(void *handle)
 	{
-		// Return 1 for "ready"
 		return 1;
 	}
 
 	int RRTransSynchronize(void *handle)
 	{
-		// Return 0 for success
 		return 0;
 	}
 
 	int RRTransSendFrame(void *handle, RRFrame *frame, int sync)
 	{
+		_vgl_disableFaker();
+
+		int ret = 0;
 		try
 		{
 			GPUEncTrans *trans = (GPUEncTrans *)handle;
@@ -347,14 +362,19 @@ extern "C"
 		{
 			snprintf(errStr, MAXSTR + 14, "Error in %s -- %s", e.getMethod(),
 				e.getMessage());
-			return -1;
+			ret = -1;
 		}
-		// Return 0 for success
-		return 0;
+
+		_vgl_enableFaker();
+
+		return ret;
 	}
 
 	int RRTransDestroy(void *handle)
 	{
+		_vgl_disableFaker();
+
+		int ret = 0;
 		try
 		{
 			GPUEncTrans *trans = (GPUEncTrans *)handle;
@@ -365,10 +385,12 @@ extern "C"
 		{
 			snprintf(errStr, MAXSTR + 14, "Error in %s -- %s", e.getMethod(),
 				e.getMessage());
-			return -1;
+			ret = -1;
 		}
-		// Return 0 for success
-		return 0;
+
+		_vgl_enableFaker();
+
+		return ret;
 	}
 
 	const char *RRTransGetError(void)
