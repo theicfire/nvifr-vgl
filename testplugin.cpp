@@ -195,7 +195,7 @@ void GPUEncTrans::captureHwEnc()
 	glGetIntegerv(GL_RENDER_MODE, &renderMode);
 	if (renderMode != GL_RENDER && renderMode != 0)
 	{
-		if(!alreadyWarnedRenderMode && fconfig->verbose)
+		if (!alreadyWarnedRenderMode && fconfig->verbose)
 		{
 			fprintf(stderr, "WARNING: One or more readbacks skipped because render mode != GL_RENDER.\n");
 			alreadyWarnedRenderMode = true;
@@ -245,7 +245,7 @@ void GPUEncTrans::captureSys()
 	glGetIntegerv(GL_RENDER_MODE, &renderMode);
 	if (renderMode != GL_RENDER && renderMode != 0)
 	{
-		if(!alreadyWarnedRenderMode && fconfig->verbose)
+		if (!alreadyWarnedRenderMode && fconfig->verbose)
 		{
 			fprintf(stderr, "WARNING: One or more readbacks skipped because render mode != GL_RENDER.\n");
 			alreadyWarnedRenderMode = true;
@@ -316,7 +316,7 @@ extern "C"
 		try
 		{
 			GPUEncTrans *trans = (GPUEncTrans *)handle;
-			if(!trans) THROW("Invalid handle");
+			if (!trans) THROW("Invalid handle");
 			frame = trans->getFrame(width, height, format);
 		}
 		catch(Error &e)
@@ -349,7 +349,7 @@ extern "C"
 		try
 		{
 			GPUEncTrans *trans = (GPUEncTrans *)handle;
-			if(!trans) THROW("Invalid handle");
+			if (!trans) THROW("Invalid handle");
 			// A session is required. The session is associated with the current
 			// OpenGL context.
 			// sleep(10);
@@ -378,7 +378,7 @@ extern "C"
 		try
 		{
 			GPUEncTrans *trans = (GPUEncTrans *)handle;
-			if(!trans) THROW("Invalid handle");
+			if (!trans) THROW("Invalid handle");
 			delete trans;
 		}
 		catch(Error &e)
