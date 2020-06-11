@@ -93,7 +93,7 @@ class GPUEncTrans
 		void captureSys();
 
 	private:
-		void throw_nvifr_error(const char *msg);
+		void throw_nvifr_error(const char *function, int line);
 		void initNVIFR();
 
 		char errStrTmp[256];
@@ -108,13 +108,12 @@ class GPUEncTrans
 		bool alreadyWarnedRenderMode;
 };
 
-void GPUEncTrans::throw_nvifr_error(const char *msg)
+void GPUEncTrans::throw_nvifr_error(const char *function, int line)
 {
 	unsigned int returnedLen, remainingBytes;
-	snprintf(errStrTmp, 256, "%s\nnvifrogl error: ", msg);
-	XCapture::nvIFR.nvIFROGLGetError(&errStrTmp[strlen(errStrTmp)],
-		256 - strlen(errStrTmp), &returnedLen, &remainingBytes);
-	THROW(errStrTmp);
+	XCapture::nvIFR.nvIFROGLGetError(errStrTmp, 256, &returnedLen,
+		&remainingBytes);
+	throw(vglutil::Error(function, errStrTmp, line));
 }
 
 void GPUEncTrans::initNVIFR()
@@ -142,10 +141,7 @@ void GPUEncTrans::setupNVIFRSYS()
 	if ((ret = XCapture::nvIFR.nvIFROGLCreateTransferToSysObject(m_hSession,
 		&to_sys_config, &m_hSysTransferObject)) != NV_IFROGL_SUCCESS)
 	{
-		snprintf(errStrTmp, 256,
-			"Lame! NvIFROGLCreateRawSession Failed to create a transfer object "
-			"with code %d.", ret);
-		THROW(errStrTmp);
+		throw_nvifr_error("nvIFROGLCreateTransferToSysObject()", __LINE__);
 	}
 }
 
@@ -174,10 +170,7 @@ void GPUEncTrans::setupNVIFRHwEnc(int width, int height)
 	if (XCapture::nvIFR.nvIFROGLCreateTransferToHwEncObject(m_hSession, &config,
 		&m_hTransferObject) != NV_IFROGL_SUCCESS)
 	{
-		snprintf(errStrTmp, 256,
-			"Failed to create a NvIFROGL transfer object. w=%d, h=%d\n",
-			config.width, config.height);
-		THROW(errStrTmp);
+		throw_nvifr_error("nvIFROGLCreateTransferToHwEncObject()", __LINE__);
 	}
 }
 
@@ -209,14 +202,14 @@ void GPUEncTrans::captureHwEnc()
 	if (XCapture::nvIFR.nvIFROGLTransferFramebufferToHwEnc(m_hTransferObject,
 		NULL, drawFBO, readBuffer, GL_NONE) != NV_IFROGL_SUCCESS)
 	{
-		throw_nvifr_error("Failed to transfer data from the framebuffer.");
+		throw_nvifr_error("nvIFROGLTransferFramebufferToHwEnc()", __LINE__);
 	}
 
 	// lock the transferred data
 	if (XCapture::nvIFR.nvIFROGLLockTransferData(m_hTransferObject, &dataSize,
 		&data) != NV_IFROGL_SUCCESS)
 	{
-		THROW("Failed to lock the transferred data.");
+		throw_nvifr_error("nvIFROGLLockTransferData()", __LINE__);
 	}
 
 	// write to the file
@@ -227,7 +220,7 @@ void GPUEncTrans::captureHwEnc()
 	if (XCapture::nvIFR.nvIFROGLReleaseTransferData(m_hTransferObject) !=
 		NV_IFROGL_SUCCESS)
 	{
-		THROW("Failed to release the transferred data.");
+		throw_nvifr_error("nvIFROGLReleaseTransferData()", __LINE__);
 	}
 }
 
@@ -260,21 +253,21 @@ void GPUEncTrans::captureSys()
 		drawFBO, readBuffer, NV_IFROGL_TRANSFER_FRAMEBUFFER_FLAG_NONE, 0, 0, 0,
 		0) != NV_IFROGL_SUCCESS)
 	{
-		throw_nvifr_error("Failed to transfer data from the framebuffer.");
+		throw_nvifr_error("nvIFROGLTransferFramebufferToSys()", __LINE__);
 	}
 
 	// lock the transferred data
 	if (XCapture::nvIFR.nvIFROGLLockTransferData(m_hSysTransferObject, &dataSize,
 		&data) != NV_IFROGL_SUCCESS)
 	{
-		THROW("Failed to lock the transferred data.");
+		throw_nvifr_error("nvIFROGLLockTransferData()", __LINE__);
 	}
 
 	// release the data buffer
 	if (XCapture::nvIFR.nvIFROGLReleaseTransferData(m_hSysTransferObject) !=
 		NV_IFROGL_SUCCESS)
 	{
-		THROW("Failed to release the transferred data.");
+		throw_nvifr_error("nvIFROGLReleaseTransferData()", __LINE__);
 	}
 }
 
