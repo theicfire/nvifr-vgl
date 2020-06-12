@@ -62,7 +62,7 @@ public:
 	GPUEncBuffer(void) : fbo(0), rbo(0), width(0), height(0), dpy3D(NULL),
 						 draw(0), read(0), vglCtx(0), ctx(0)
 	{
-		waitUntilReady();
+		ready.wait();
 
 		dpy3D = glXGetCurrentDisplay();
 		draw = glXGetCurrentDrawable();
@@ -171,13 +171,12 @@ public:
 	GLuint getFBO(void) { return fbo; }
 	GLuint getRBO(void) { return rbo; }
 
-	void waitUntilReady(void) { ready.wait(); }
 	void signalComplete(void) { complete.signal(); }
-	void waitUntilComplete(void) { complete.wait(); }
+	void waitComplete(void) { complete.wait(); }
 	bool isComplete(void) { return !complete.isLocked(); }
 
 private:
-	Event ready, complete;
+	Event ready, complete; // wait: *decrement semaphore*, isLocked: check. Don't wait or decrement., signal: *increment semaphore*
 	GLuint fbo, rbo;
 	int width, height;
 	Display *dpy3D;
@@ -242,12 +241,12 @@ public:
 
 			int index = -1;
 			for (int i = 0; i < NFRAMES; i++)
-				if (buf[i].isComplete())
+				if (buf[i].isComplete()) // we could break; here?
 					index = i;
 			if (index < 0)
 				THROW("No free buffers in pool");
 			frame = &rr_frame[index];
-			((GPUEncBuffer *)frame->opaque)->waitUntilComplete();
+			((GPUEncBuffer *)frame->opaque)->waitComplete();
 		}
 		frame->w = width;
 		frame->h = height;
@@ -268,6 +267,7 @@ public:
 
 	void synchronize(void)
 	{
+		// TODO why do I need this? I don't fully get it.. it's to synchronize a thread and virtualgl, but I'm not sure if I fully grok this.
 		ready.wait();
 	}
 
@@ -276,6 +276,9 @@ public:
 		if (thread)
 			thread->checkError();
 		((GPUEncBuffer *)frame->opaque)->copyPixels();
+
+		// Add frame. Delete everything, and callback to spoilFunction for all deleted frames.
+		// TODO what if this is called while something is being encoded? There's nothing to stop us from saying "this frame is completed!"
 		queue.spoil((void *)frame, spoilFunction);
 	}
 
@@ -326,7 +329,7 @@ void GPUEncTrans::run(void)
 		while (!shutdown)
 		{
 			void *ptr = NULL;
-			queue.get(&ptr);
+			queue.get(&ptr); // dequeue
 			RRFrame *frame = (RRFrame *)ptr;
 			if (shutdown)
 				return;
@@ -342,6 +345,7 @@ void GPUEncTrans::run(void)
 			captureHwEnc(buf->getFBO(), buf->getRBO());
 			glXMakeContextCurrent(dpy3DClone, 0, 0, 0);
 
+			// A buffer is complete either when it is spoiled or when it has been encoded.
 			buf->signalComplete();
 		}
 	}
