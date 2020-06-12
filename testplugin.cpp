@@ -40,6 +40,7 @@
 #include "Error.h"
 #include "Thread.h"
 #include "GenericQ.h"
+#include <stdarg.h>
 #define GL_GLEXT_PROTOTYPES
 #include "nvifr-encoder/XCapture.h"
 
@@ -55,6 +56,32 @@ using vglutil::Thread;
 
 static __thread char errStr[MAXSTR + 14];
 static NV_IFROGL_HW_ENC_TYPE codecType = NV_IFROGL_HW_ENC_H264;
+
+FILE *debug = nullptr;
+
+void log_format(const char *tag, const char *message, va_list args)
+{
+	if (debug == nullptr)
+	{
+		return;
+	}
+	time_t now;
+	time(&now);
+	char *date = ctime(&now);
+	date[strlen(date) - 1] = '\0';
+	fprintf(debug, "%s [%s] ", date, tag);
+	vfprintf(debug, message, args);
+	fprintf(debug, "\n");
+	fflush(debug);
+}
+
+void log_info(const char *message, ...)
+{
+	va_list args;
+	va_start(args, message);
+	log_format("info", message, args);
+	va_end(args);
+}
 
 class GPUEncBuffer
 {
@@ -267,7 +294,7 @@ public:
 
 	void synchronize(void)
 	{
-		// TODO why do I need this? I don't fully get it.. it's to synchronize a thread and virtualgl, but I'm not sure if I fully grok this.
+		log_info("ERROR: Synchronize should not be called because frame spoiling is enabled");
 		ready.wait();
 	}
 
@@ -573,6 +600,11 @@ extern "C"
 	{
 		_vgl_disableFaker();
 
+		if (debug == nullptr)
+		{
+			debug = fopen("/tmp/vgl.log", "a");
+		}
+
 		void *handle = NULL;
 		try
 		{
@@ -598,7 +630,7 @@ extern "C"
 	RRFrame *RRTransGetFrame(void *handle, int width, int height, int format,
 							 int stereo)
 	{
-		printf("rrgetframe\n");
+		log_info("RRTransGetFrame()");
 		_vgl_disableFaker();
 
 		RRFrame *frame = NULL;
@@ -625,6 +657,7 @@ extern "C"
 	{
 		_vgl_disableFaker();
 
+		log_info("Error: RRTransReady() called. Spoil last may be happening");
 		int ret = -1;
 		try
 		{
@@ -671,7 +704,7 @@ extern "C"
 
 	int RRTransSendFrame(void *handle, RRFrame *frame, int sync)
 	{
-		printf("rrsendframe\n");
+		log_info("RRTransSendFrame()");
 		_vgl_disableFaker();
 
 		int ret = 0;
@@ -708,6 +741,7 @@ extern "C"
 	{
 		_vgl_disableFaker();
 
+		fclose(debug);
 		int ret = 0;
 		try
 		{
