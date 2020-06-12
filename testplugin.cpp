@@ -46,257 +46,275 @@
 extern "C" void _vgl_disableFaker(void) __attribute__((weak));
 extern "C" void _vgl_enableFaker(void) __attribute__((weak));
 
-using namespace vglutil;
+using vglutil::CriticalSection;
+using vglutil::Error;
+using vglutil::Event;
+using vglutil::GenericQ;
+using vglutil::Runnable;
+using vglutil::Thread;
 
 static __thread char errStr[MAXSTR + 14];
 static NV_IFROGL_HW_ENC_TYPE codecType = NV_IFROGL_HW_ENC_H264;
 
 class GPUEncBuffer
 {
-	public:
-		GPUEncBuffer(void) : fbo(0), rbo(0), width(0), height(0), dpy3D(NULL),
-			draw(0), read(0), vglCtx(0), ctx(0)
+public:
+	GPUEncBuffer(void) : fbo(0), rbo(0), width(0), height(0), dpy3D(NULL),
+						 draw(0), read(0), vglCtx(0), ctx(0)
+	{
+		waitUntilReady();
+
+		dpy3D = glXGetCurrentDisplay();
+		draw = glXGetCurrentDrawable();
+		read = glXGetCurrentReadDrawable();
+		vglCtx = glXGetCurrentContext();
+		if (!dpy3D || !draw || !read || !vglCtx)
+			THROW("OpenGL context created by VirtualGL Faker is invalid");
+		int fbcid = 0;
+		glXQueryContext(dpy3D, vglCtx, GLX_FBCONFIG_ID, &fbcid);
+		if (!fbcid)
+			THROW("OpenGL context created by VirtualGL Faker is invalid");
+		int attribs[] = {GLX_FBCONFIG_ID, fbcid, None}, n = 0;
+		GLXFBConfig *configs = glXChooseFBConfig(dpy3D, DefaultScreen(dpy3D),
+												 attribs, &n);
+		if (!configs || n < 1)
+			THROW("Could not obtain FB config from current context.");
+		GLXFBConfig config = configs[0];
+		XFree(configs);
+		if (!(ctx = glXCreateNewContext(dpy3D, config, GLX_RGBA_TYPE, NULL,
+										True)))
+			THROW("Could not create OpenGL context for GPU buffer");
+	}
+
+	~GPUEncBuffer(void)
+	{
+		destroy();
+		makeCurrentVGL();
+		glXDestroyContext(dpy3D, ctx);
+	}
+
+	void destroy(void)
+	{
+		makeCurrent(dpy3D);
+		if (rbo)
+			glDeleteRenderbuffers(1, &rbo);
+		if (fbo)
+			glDeleteFramebuffers(1, &fbo);
+	}
+
+	void init(int width_, int height_)
+	{
+		if (fbo && rbo && width_ == width && height_ == height)
+			return;
+
+		width = width_;
+		height = height_;
+		destroy();
+		glGenFramebuffers(1, &fbo);
+		glGenRenderbuffers(1, &rbo);
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+		glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+		glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, width, height);
+		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+								  GL_RENDERBUFFER, rbo);
+		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 		{
-			waitUntilReady();
-
-			dpy3D = glXGetCurrentDisplay();
-			draw = glXGetCurrentDrawable();
-			read = glXGetCurrentReadDrawable();
-			vglCtx = glXGetCurrentContext();
-			if (!dpy3D || !draw || !read || !vglCtx)
-				THROW("OpenGL context created by VirtualGL Faker is invalid");
-			int fbcid = 0;
-			glXQueryContext(dpy3D, vglCtx, GLX_FBCONFIG_ID, &fbcid);
-			if (!fbcid)
-				THROW("OpenGL context created by VirtualGL Faker is invalid");
-			int attribs[] = { GLX_FBCONFIG_ID, fbcid, None }, n = 0;
-			GLXFBConfig *configs = glXChooseFBConfig(dpy3D, DefaultScreen(dpy3D),
-				attribs, &n);
-			if (!configs || n < 1)
-				THROW("Could not obtain FB config from current context.");
-			GLXFBConfig config = configs[0];
-			XFree(configs);
-			if (!(ctx = glXCreateNewContext(dpy3D, config, GLX_RGBA_TYPE, NULL,
-				True)))
-				THROW("Could not create OpenGL context for GPU buffer");
-		}
-
-		~GPUEncBuffer(void)
-		{
-			destroy();
-			makeCurrentVGL();
-			glXDestroyContext(dpy3D, ctx);
-		}
-
-		void destroy(void)
-		{
-			makeCurrent(dpy3D);
-			if (rbo) glDeleteRenderbuffers(1, &rbo);
-			if (fbo) glDeleteFramebuffers(1, &fbo);
-		}
-
-		void init(int width_, int height_)
-		{
-			if (fbo && rbo && width_ == width && height_ == height)
-				return;
-
-			width = width_;  height = height_;
-			destroy();
-			glGenFramebuffers(1, &fbo);
-			glGenRenderbuffers(1, &rbo);
-			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-			glBindRenderbuffer(GL_RENDERBUFFER, rbo);
-			glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, width, height);
-			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-				GL_RENDERBUFFER, rbo);
-			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-			{
-				glBindFramebuffer(GL_FRAMEBUFFER, 0);
-				glBindRenderbuffer(GL_RENDERBUFFER, 0);
-				makeCurrentVGL();
-				THROW("FBO is incomplete");
-			}
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			glBindRenderbuffer(GL_RENDERBUFFER, 0);
 			makeCurrentVGL();
+			THROW("FBO is incomplete");
 		}
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glBindRenderbuffer(GL_RENDERBUFFER, 0);
+		makeCurrentVGL();
+	}
 
-		void makeCurrent(Display *dpy)
-		{
-			if (!glXMakeContextCurrent(dpy, draw, read, ctx))
-				THROW("Could not make GPU buffer's OpenGL context current");
-		}
+	void makeCurrent(Display *dpy)
+	{
+		if (!glXMakeContextCurrent(dpy, draw, read, ctx))
+			THROW("Could not make GPU buffer's OpenGL context current");
+	}
 
-		void makeCurrentVGL(void)
-		{
-			if (!glXMakeContextCurrent(dpy3D, draw, read, vglCtx))
-				THROW("Could not make VirtualGL's OpenGL context current");
-		}
+	void makeCurrentVGL(void)
+	{
+		if (!glXMakeContextCurrent(dpy3D, draw, read, vglCtx))
+			THROW("Could not make VirtualGL's OpenGL context current");
+	}
 
-		void copyPixels(void)
+	void copyPixels(void)
+	{
+		GLint readBuf = 0;
+		glGetIntegerv(GL_READ_BUFFER, &readBuf);
+		if (!readBuf)
+			THROW("Could not get current read buffer");
+		makeCurrent(dpy3D);
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo);
+		glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+		glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+								  GL_RENDERBUFFER, rbo);
+		if (glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) !=
+			GL_FRAMEBUFFER_COMPLETE)
 		{
-			GLint readBuf = 0;
-			glGetIntegerv(GL_READ_BUFFER, &readBuf);
-			if (!readBuf)
-				THROW("Could not get current read buffer");
-			makeCurrent(dpy3D);
-			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo);
-			glBindRenderbuffer(GL_RENDERBUFFER, rbo);
-			glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-				GL_RENDERBUFFER, rbo);
-			if (glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) !=
-				GL_FRAMEBUFFER_COMPLETE)
-			{
-				glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-				glBindRenderbuffer(GL_RENDERBUFFER, 0);
-				makeCurrentVGL();
-				THROW("FBO is incomplete");
-			}
-			glReadBuffer(readBuf);
-			glDrawBuffer(GL_COLOR_ATTACHMENT0);
-			glCopyPixels(0, 0, width, height, GL_COLOR);
 			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 			glBindRenderbuffer(GL_RENDERBUFFER, 0);
 			makeCurrentVGL();
+			THROW("FBO is incomplete");
 		}
+		glReadBuffer(readBuf);
+		glDrawBuffer(GL_COLOR_ATTACHMENT0);
+		glCopyPixels(0, 0, width, height, GL_COLOR);
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+		glBindRenderbuffer(GL_RENDERBUFFER, 0);
+		makeCurrentVGL();
+	}
 
-		GLuint getFBO(void) { return fbo; }
-		GLuint getRBO(void) { return rbo; }
+	GLuint getFBO(void) { return fbo; }
+	GLuint getRBO(void) { return rbo; }
 
-		void waitUntilReady(void) { ready.wait(); }
-		void signalComplete(void) { complete.signal(); }
-		void waitUntilComplete(void) { complete.wait(); }
-		bool isComplete(void) { return !complete.isLocked(); }
+	void waitUntilReady(void) { ready.wait(); }
+	void signalComplete(void) { complete.signal(); }
+	void waitUntilComplete(void) { complete.wait(); }
+	bool isComplete(void) { return !complete.isLocked(); }
 
-	private:
-		Event ready, complete;
-		GLuint fbo, rbo;
-		int width, height;
-		Display *dpy3D;
-		GLXDrawable draw, read;
-		GLXContext vglCtx, ctx;
+private:
+	Event ready, complete;
+	GLuint fbo, rbo;
+	int width, height;
+	Display *dpy3D;
+	GLXDrawable draw, read;
+	GLXContext vglCtx, ctx;
 };
 
 class GPUEncTrans : public Runnable
 {
-	public:
-		GPUEncTrans(Window win_, FakerConfig *fconfig_) : m_fpOut(NULL),
-			m_hSession(NULL), m_hTransferObject(NULL), m_hSysTransferObject(NULL),
-			win(win_), fconfig(fconfig_), alreadyWarnedRenderMode(false),
-			shutdown(false), thread(NULL), width(0), height(0), dpy3DClone(NULL)
+public:
+	GPUEncTrans(Window win_, FakerConfig *fconfig_) : m_fpOut(NULL),
+													  m_hSession(NULL), m_hTransferObject(NULL), m_hSysTransferObject(NULL),
+													  win(win_), fconfig(fconfig_), alreadyWarnedRenderMode(false),
+													  shutdown(false), thread(NULL), width(0), height(0), dpy3DClone(NULL)
+	{
+		memset(rr_frame, 0, sizeof(RRFrame) * NFRAMES);
+		for (int i = 0; i < NFRAMES; i++)
+			rr_frame[i].opaque = (void *)&buf[i];
+
+		Display *dpy3D = glXGetCurrentDisplay();
+		if (!dpy3D)
+			THROW("OpenGL context created by VirtualGL Faker is invalid");
+		if (!(dpy3DClone = XOpenDisplay(DisplayString(dpy3D))))
+			THROW("Could not clone 3D X server connection");
+
+		char tmp[256];
+		snprintf(tmp, 256, "%lx.h264", win);
+		m_fpOut = fopen(tmp, "wb");
+		if (m_fpOut == NULL)
 		{
-			memset(rr_frame, 0, sizeof(RRFrame) * NFRAMES);
+			THROW("Failed to create output file.");
+		}
+
+		thread = new Thread(this);
+		thread->start();
+	}
+
+	~GPUEncTrans()
+	{
+		shutdown = true;
+		queue.release();
+		if (thread)
+		{
+			thread->stop();
+			delete thread;
+		}
+		if (m_fpOut)
+			fclose(m_fpOut);
+		if (dpy3DClone)
+			XCloseDisplay(dpy3DClone);
+	}
+
+	RRFrame *getFrame(int width, int height, int format)
+	{
+		RRFrame *frame;
+		if (shutdown)
+			return NULL;
+		if (thread)
+			thread->checkError();
+		{
+			CriticalSection::SafeLock l(mutex);
+
+			int index = -1;
 			for (int i = 0; i < NFRAMES; i++)
-				rr_frame[i].opaque = (void *)&buf[i];
-
-			Display *dpy3D = glXGetCurrentDisplay();
-			if (!dpy3D)
-				THROW("OpenGL context created by VirtualGL Faker is invalid");
-			if (!(dpy3DClone = XOpenDisplay(DisplayString(dpy3D))))
-				THROW("Could not clone 3D X server connection");
-
-			char tmp[256];
-			snprintf(tmp, 256, "%lx.h264", win);
-			m_fpOut = fopen(tmp, "wb");
-			if (m_fpOut == NULL)
-			{
-				THROW("Failed to create output file.");
-			}
-
-			thread = new Thread(this);
-			thread->start();
+				if (buf[i].isComplete())
+					index = i;
+			if (index < 0)
+				THROW("No free buffers in pool");
+			frame = &rr_frame[index];
+			((GPUEncBuffer *)frame->opaque)->waitUntilComplete();
 		}
+		frame->w = width;
+		frame->h = height;
+		frame->pitch = width * rrtrans_ps[format];
+		frame->bits = nullptr;
+		frame->rbits = nullptr;
+		frame->format = format;
+		((GPUEncBuffer *)frame->opaque)->init(width, height);
+		return frame;
+	}
 
-		~GPUEncTrans()
-		{
-			shutdown = true;
-			queue.release();
-			if (thread)
-			{
-				thread->stop();  delete thread;
-			}
-			if (m_fpOut) fclose(m_fpOut);
-			if (dpy3DClone) XCloseDisplay(dpy3DClone);
-		}
+	bool isReady(void)
+	{
+		if (thread)
+			thread->checkError();
+		return queue.items() <= 0;
+	}
 
-		RRFrame *getFrame(int width, int height, int format)
-		{
-			RRFrame *frame;
-			if (shutdown) return NULL;
-			if (thread) thread->checkError();
-			{
-				CriticalSection::SafeLock l(mutex);
+	void synchronize(void)
+	{
+		ready.wait();
+	}
 
-				int index = -1;
-				for (int i = 0; i < NFRAMES; i++)
-					if (buf[i].isComplete()) index = i;
-				if (index < 0) THROW("No free buffers in pool");
-				frame = &rr_frame[index];
-				((GPUEncBuffer *)frame->opaque)->waitUntilComplete();
-			}
-			frame->w = width;
-			frame->h = height;
-			frame->pitch = width * rrtrans_ps[format];
-			frame->bits = nullptr;
-			frame->rbits = nullptr;
-			frame->format = format;
-			((GPUEncBuffer *)frame->opaque)->init(width, height);
-			return frame;
-		}
+	void sendFrame(RRFrame *frame)
+	{
+		if (thread)
+			thread->checkError();
+		((GPUEncBuffer *)frame->opaque)->copyPixels();
+		queue.spoil((void *)frame, spoilFunction);
+	}
 
-		bool isReady(void)
-		{
-			if (thread) thread->checkError();
-			return queue.items() <= 0;
-		}
+	void setupNVIFRSYS();
+	void setupNVIFRHwEnc(int width, int height);
+	void captureHwEnc(GLuint fbo, GLuint rbo);
+	void captureSys(GLuint fbo, GLuint rbo);
 
-		void synchronize(void)
-		{
-			ready.wait();
-		}
+private:
+	void throw_nvifr_error(const char *function, int line);
+	void initNVIFR();
 
-		void sendFrame(RRFrame *frame)
-		{
-			if (thread) thread->checkError();
-			((GPUEncBuffer *)frame->opaque)->copyPixels();
-			queue.spoil((void *)frame, spoilFunction);
-		}
+	void run(void);
 
-		void setupNVIFRSYS();
-		void setupNVIFRHwEnc(int width, int height);
-		void captureHwEnc(GLuint fbo, GLuint rbo);
-		void captureSys(GLuint fbo, GLuint rbo);
+	static void spoilFunction(void *queuedObject)
+	{
+		RRFrame *frame = (RRFrame *)queuedObject;
+		if (frame)
+			((GPUEncBuffer *)frame->opaque)->signalComplete();
+	}
 
-	private:
-		void throw_nvifr_error(const char *function, int line);
-		void initNVIFR();
-
-		void run(void);
-
-		static void spoilFunction(void *queuedObject)
-		{
-			RRFrame *frame = (RRFrame *)queuedObject;
-			if (frame) ((GPUEncBuffer *)frame->opaque)->signalComplete();
-		}
-
-		char errStrTmp[256];
-		FILE *m_fpOut;
-		static const int NFRAMES = 3;
-		RRFrame rr_frame[NFRAMES];
-		NV_IFROGL_SESSION_HANDLE m_hSession;
-		NV_IFROGL_TRANSFEROBJECT_HANDLE m_hTransferObject;
-		NV_IFROGL_TRANSFEROBJECT_HANDLE m_hSysTransferObject;
-		Window win;
-		FakerConfig *fconfig;
-		bool alreadyWarnedRenderMode;
-		CriticalSection mutex;
-		GPUEncBuffer buf[NFRAMES];
-		bool shutdown;
-		Event ready;
-		GenericQ queue;
-		Thread *thread;
-		int width, height;
-		Display *dpy3DClone;
+	char errStrTmp[256];
+	FILE *m_fpOut;
+	static const int NFRAMES = 3;
+	RRFrame rr_frame[NFRAMES];
+	NV_IFROGL_SESSION_HANDLE m_hSession;
+	NV_IFROGL_TRANSFEROBJECT_HANDLE m_hTransferObject;
+	NV_IFROGL_TRANSFEROBJECT_HANDLE m_hSysTransferObject;
+	Window win;
+	FakerConfig *fconfig;
+	bool alreadyWarnedRenderMode;
+	CriticalSection mutex;
+	GPUEncBuffer buf[NFRAMES];
+	bool shutdown;
+	Event ready;
+	GenericQ queue;
+	Thread *thread;
+	int width, height;
+	Display *dpy3DClone;
 };
 
 void GPUEncTrans::run(void)
@@ -310,8 +328,10 @@ void GPUEncTrans::run(void)
 			void *ptr = NULL;
 			queue.get(&ptr);
 			RRFrame *frame = (RRFrame *)ptr;
-			if (shutdown) return;
-			if (!frame) THROW("Queue has been shut down");
+			if (shutdown)
+				return;
+			if (!frame)
+				THROW("Queue has been shut down");
 			ready.signal();
 
 			GPUEncBuffer *buf = (GPUEncBuffer *)frame->opaque;
@@ -325,15 +345,17 @@ void GPUEncTrans::run(void)
 			buf->signalComplete();
 		}
 	}
-	catch(Error &e)
+	catch (Error &e)
 	{
 		glXMakeContextCurrent(dpy3DClone, 0, 0, 0);
-		if (thread) thread->setError(e);
+		if (thread)
+			thread->setError(e);
 		if (m_hTransferObject)
 			XCapture::nvIFR.nvIFROGLDestroyTransferObject(m_hTransferObject);
 		if (m_hSysTransferObject)
 			XCapture::nvIFR.nvIFROGLDestroyTransferObject(m_hSysTransferObject);
-		if (m_hSession) XCapture::nvIFR.nvIFROGLDestroySession(m_hSession);
+		if (m_hSession)
+			XCapture::nvIFR.nvIFROGLDestroySession(m_hSession);
 		ready.signal();
 		_vgl_enableFaker();
 		throw;
@@ -343,7 +365,8 @@ void GPUEncTrans::run(void)
 		XCapture::nvIFR.nvIFROGLDestroyTransferObject(m_hTransferObject);
 	if (m_hSysTransferObject)
 		XCapture::nvIFR.nvIFROGLDestroyTransferObject(m_hSysTransferObject);
-	if (m_hSession) XCapture::nvIFR.nvIFROGLDestroySession(m_hSession);
+	if (m_hSession)
+		XCapture::nvIFR.nvIFROGLDestroySession(m_hSession);
 	_vgl_enableFaker();
 }
 
@@ -351,13 +374,14 @@ void GPUEncTrans::throw_nvifr_error(const char *function, int line)
 {
 	unsigned int returnedLen, remainingBytes;
 	XCapture::nvIFR.nvIFROGLGetError(errStrTmp, 256, &returnedLen,
-		&remainingBytes);
+									 &remainingBytes);
 	throw(vglutil::Error(function, errStrTmp, line));
 }
 
 void GPUEncTrans::initNVIFR()
 {
-	if (m_hSession) return;
+	if (m_hSession)
+		return;
 
 	XCapture::nvIFR.initialize();
 	if (XCapture::nvIFR.nvIFROGLCreateSession(&m_hSession, NULL) !=
@@ -371,14 +395,15 @@ void GPUEncTrans::setupNVIFRSYS()
 {
 	initNVIFR();
 
-	if (m_hSysTransferObject) return;
+	if (m_hSysTransferObject)
+		return;
 
 	NV_IFROGL_TO_SYS_CONFIG to_sys_config;
 	memset(&to_sys_config, 0, sizeof(NV_IFROGL_TO_SYS_CONFIG));
 	to_sys_config.format = NV_IFROGL_TARGET_FORMAT_YUV420P;
 	int ret;
 	if ((ret = XCapture::nvIFR.nvIFROGLCreateTransferToSysObject(m_hSession,
-		&to_sys_config, &m_hSysTransferObject)) != NV_IFROGL_SUCCESS)
+																 &to_sys_config, &m_hSysTransferObject)) != NV_IFROGL_SUCCESS)
 	{
 		throw_nvifr_error("nvIFROGLCreateTransferToSysObject()", __LINE__);
 	}
@@ -391,7 +416,8 @@ void GPUEncTrans::setupNVIFRHwEnc(int width_, int height_)
 	if (m_hTransferObject && width_ == width && height_ == height)
 		return;
 
-	width = width_;  height = height_;
+	width = width_;
+	height = height_;
 
 	if (m_hTransferObject)
 		XCapture::nvIFR.nvIFROGLDestroyTransferObject(m_hTransferObject);
@@ -413,7 +439,7 @@ void GPUEncTrans::setupNVIFRHwEnc(int width_, int height_)
 	config.codecType = codecType;
 
 	if (XCapture::nvIFR.nvIFROGLCreateTransferToHwEncObject(m_hSession, &config,
-		&m_hTransferObject) != NV_IFROGL_SUCCESS)
+															&m_hTransferObject) != NV_IFROGL_SUCCESS)
 	{
 		throw_nvifr_error("nvIFROGLCreateTransferToHwEncObject()", __LINE__);
 	}
@@ -438,7 +464,7 @@ void GPUEncTrans::captureHwEnc(GLuint fbo, GLuint rbo)
 		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 		glBindRenderbuffer(GL_RENDERBUFFER, rbo);
 		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-			GL_RENDERBUFFER, rbo);
+								  GL_RENDERBUFFER, rbo);
 		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 			THROW("FBO is incomplete");
 
@@ -446,14 +472,14 @@ void GPUEncTrans::captureHwEnc(GLuint fbo, GLuint rbo)
 		const void *data;
 
 		if (XCapture::nvIFR.nvIFROGLTransferFramebufferToHwEnc(m_hTransferObject,
-			NULL, fbo, GL_COLOR_ATTACHMENT0, GL_NONE) != NV_IFROGL_SUCCESS)
+															   NULL, fbo, GL_COLOR_ATTACHMENT0, GL_NONE) != NV_IFROGL_SUCCESS)
 		{
 			throw_nvifr_error("nvIFROGLTransferFramebufferToHwEnc()", __LINE__);
 		}
 
 		// lock the transferred data
 		if (XCapture::nvIFR.nvIFROGLLockTransferData(m_hTransferObject, &dataSize,
-			&data) != NV_IFROGL_SUCCESS)
+													 &data) != NV_IFROGL_SUCCESS)
 		{
 			throw_nvifr_error("nvIFROGLLockTransferData()", __LINE__);
 		}
@@ -469,7 +495,7 @@ void GPUEncTrans::captureHwEnc(GLuint fbo, GLuint rbo)
 			throw_nvifr_error("nvIFROGLReleaseTransferData()", __LINE__);
 		}
 	}
-	catch(...)
+	catch (...)
 	{
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glBindRenderbuffer(GL_RENDERBUFFER, 0);
@@ -498,7 +524,7 @@ void GPUEncTrans::captureSys(GLuint fbo, GLuint rbo)
 		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 		glBindRenderbuffer(GL_RENDERBUFFER, rbo);
 		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-			GL_RENDERBUFFER, rbo);
+								  GL_RENDERBUFFER, rbo);
 		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 			THROW("FBO is incomplete");
 
@@ -506,15 +532,15 @@ void GPUEncTrans::captureSys(GLuint fbo, GLuint rbo)
 		const void *data;
 
 		if (XCapture::nvIFR.nvIFROGLTransferFramebufferToSys(m_hSysTransferObject,
-			fbo, GL_COLOR_ATTACHMENT0, NV_IFROGL_TRANSFER_FRAMEBUFFER_FLAG_NONE, 0,
-			0, 0, 0) != NV_IFROGL_SUCCESS)
+															 fbo, GL_COLOR_ATTACHMENT0, NV_IFROGL_TRANSFER_FRAMEBUFFER_FLAG_NONE, 0,
+															 0, 0, 0) != NV_IFROGL_SUCCESS)
 		{
 			throw_nvifr_error("nvIFROGLTransferFramebufferToSys()", __LINE__);
 		}
 
 		// lock the transferred data
 		if (XCapture::nvIFR.nvIFROGLLockTransferData(m_hSysTransferObject,
-			&dataSize, &data) != NV_IFROGL_SUCCESS)
+													 &dataSize, &data) != NV_IFROGL_SUCCESS)
 		{
 			throw_nvifr_error("nvIFROGLLockTransferData()", __LINE__);
 		}
@@ -526,7 +552,7 @@ void GPUEncTrans::captureSys(GLuint fbo, GLuint rbo)
 			throw_nvifr_error("nvIFROGLReleaseTransferData()", __LINE__);
 		}
 	}
-	catch(...)
+	catch (...)
 	{
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glBindRenderbuffer(GL_RENDERBUFFER, 0);
@@ -548,10 +574,10 @@ extern "C"
 		{
 			handle = (void *)(new GPUEncTrans(win, fconfig));
 		}
-		catch(Error &e)
+		catch (Error &e)
 		{
 			snprintf(errStr, MAXSTR + 14, "Error in %s -- %s", e.getMethod(),
-				e.getMessage());
+					 e.getMessage());
 			handle = NULL;
 		}
 
@@ -566,21 +592,23 @@ extern "C"
 	}
 
 	RRFrame *RRTransGetFrame(void *handle, int width, int height, int format,
-		int stereo)
+							 int stereo)
 	{
+		printf("rrgetframe\n");
 		_vgl_disableFaker();
 
 		RRFrame *frame = NULL;
 		try
 		{
 			GPUEncTrans *trans = (GPUEncTrans *)handle;
-			if (!trans) THROW("Invalid handle");
+			if (!trans)
+				THROW("Invalid handle");
 			frame = trans->getFrame(width, height, format);
 		}
-		catch(Error &e)
+		catch (Error &e)
 		{
 			snprintf(errStr, MAXSTR + 14, "Error in %s -- %s", e.getMethod(),
-				e.getMessage());
+					 e.getMessage());
 			frame = NULL;
 		}
 
@@ -597,13 +625,14 @@ extern "C"
 		try
 		{
 			GPUEncTrans *trans = (GPUEncTrans *)handle;
-			if (!trans) THROW("Invalid handle");
+			if (!trans)
+				THROW("Invalid handle");
 			ret = (int)trans->isReady();
 		}
-		catch(Error &e)
+		catch (Error &e)
 		{
 			snprintf(errStr, MAXSTR + 14, "Error in %s -- %s", e.getMethod(),
-				e.getMessage());
+					 e.getMessage());
 			ret = -1;
 		}
 
@@ -620,13 +649,14 @@ extern "C"
 		try
 		{
 			GPUEncTrans *trans = (GPUEncTrans *)handle;
-			if (!trans) THROW("Invalid handle");
+			if (!trans)
+				THROW("Invalid handle");
 			trans->synchronize();
 		}
-		catch(Error &e)
+		catch (Error &e)
 		{
 			snprintf(errStr, MAXSTR + 14, "Error in %s -- %s", e.getMethod(),
-				e.getMessage());
+					 e.getMessage());
 			ret = -1;
 		}
 
@@ -637,13 +667,15 @@ extern "C"
 
 	int RRTransSendFrame(void *handle, RRFrame *frame, int sync)
 	{
+		printf("rrsendframe\n");
 		_vgl_disableFaker();
 
 		int ret = 0;
 		try
 		{
 			GPUEncTrans *trans = (GPUEncTrans *)handle;
-			if (!trans) THROW("Invalid handle");
+			if (!trans)
+				THROW("Invalid handle");
 			if (!frame || !frame->opaque)
 				THROW("Invalid frame handle");
 			// NOTE: This plugin does not support strict 2D/3D synchronization (refer
@@ -656,10 +688,10 @@ extern "C"
 			// server.  Fortunately, Chrome is not such an application.
 			trans->sendFrame(frame);
 		}
-		catch(Error &e)
+		catch (Error &e)
 		{
 			snprintf(errStr, MAXSTR + 14, "Error in %s -- %s", e.getMethod(),
-				e.getMessage());
+					 e.getMessage());
 			ret = -1;
 		}
 
@@ -676,13 +708,14 @@ extern "C"
 		try
 		{
 			GPUEncTrans *trans = (GPUEncTrans *)handle;
-			if (!trans) THROW("Invalid handle");
+			if (!trans)
+				THROW("Invalid handle");
 			delete trans;
 		}
-		catch(Error &e)
+		catch (Error &e)
 		{
 			snprintf(errStr, MAXSTR + 14, "Error in %s -- %s", e.getMethod(),
-				e.getMessage());
+					 e.getMessage());
 			ret = -1;
 		}
 
