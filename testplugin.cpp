@@ -41,6 +41,9 @@
 #include "Thread.h"
 #include "GenericQ.h"
 #include <stdarg.h>
+
+#include "shared_mem_comm.h"
+
 #define GL_GLEXT_PROTOTYPES
 #include "nvifr-encoder/XCapture.h"
 
@@ -217,7 +220,7 @@ public:
 	GPUEncTrans(Window win_, FakerConfig *fconfig_) : m_fpOut(NULL),
 													  m_hSession(NULL), m_hTransferObject(NULL), m_hSysTransferObject(NULL),
 													  win(win_), fconfig(fconfig_), alreadyWarnedRenderMode(false),
-													  shutdown(false), thread(NULL), width(0), height(0), dpy3DClone(NULL)
+													  shutdown(false), thread(NULL), width(0), height(0), dpy3DClone(NULL), shared_mem(false), sema_ipc(false)
 	{
 		memset(rr_frame, 0, sizeof(RRFrame) * NFRAMES);
 		for (int i = 0; i < NFRAMES; i++)
@@ -345,6 +348,8 @@ private:
 	Thread *thread;
 	int width, height;
 	Display *dpy3DClone;
+	SharedMem shared_mem;
+	SemaIPC sema_ipc;
 };
 
 void GPUEncTrans::run(void)
@@ -356,6 +361,9 @@ void GPUEncTrans::run(void)
 		while (!shutdown)
 		{
 			void *ptr = NULL;
+			log_info("Waiting for frame request..");
+			sema_ipc.wait_for_frame_request();
+			log_info("Got frame request!");
 			queue.get(&ptr); // dequeue
 			RRFrame *frame = (RRFrame *)ptr;
 			if (shutdown)
@@ -374,6 +382,8 @@ void GPUEncTrans::run(void)
 
 			// A buffer is complete either when it is spoiled or when it has been encoded.
 			buf->signalComplete();
+			log_info("Sending frame response..");
+			sema_ipc.signal_frame_response();
 		}
 	}
 	catch (Error &e)
@@ -518,6 +528,8 @@ void GPUEncTrans::captureHwEnc(GLuint fbo, GLuint rbo)
 		// write to the file
 		if (m_fpOut)
 			fwrite(data, 1, dataSize, m_fpOut);
+
+		shared_mem.write((uint8_t *)data, dataSize);
 
 		// release the data buffer
 		if (XCapture::nvIFR.nvIFROGLReleaseTransferData(m_hTransferObject) !=

@@ -3,10 +3,11 @@
         {
             "name": "Mac",
             "includePath": [
-                "../virtualgl-2.6.3/include/",
-                "../virtualgl-2.6.3/common/",
+                "../virtualgl/include/",
+                "../virtualgl/common/",
                 "/opt/libjpeg-turbo/include/",
-                "../virtualgl-2.6.3/build/include/"
+                "../virtualgl/build/include/",
+                "../virtualgl/server/"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/clang",
