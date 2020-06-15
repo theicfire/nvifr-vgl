@@ -219,7 +219,7 @@ class GPUEncTrans : public Runnable {
         width(0),
         height(0),
         dpy3DClone(NULL),
-        sema_ipc(false) {
+        mighty_ipc(false) {
     memset(rr_frame, 0, sizeof(RRFrame) * NFRAMES);
     for (int i = 0; i < NFRAMES; i++) rr_frame[i].opaque = (void *)&buf[i];
 
@@ -327,7 +327,7 @@ class GPUEncTrans : public Runnable {
   int width, height;
   Display *dpy3DClone;
   std::unique_ptr<SharedMem> shared_mem;
-  SemaIPC sema_ipc;
+  VglMightyIPC mighty_ipc;
 };
 
 void GPUEncTrans::run(void) {
@@ -337,7 +337,7 @@ void GPUEncTrans::run(void) {
     while (!shutdown) {
       void *ptr = NULL;
       log_info("Waiting for frame request..");
-      VglRPC rpc = sema_ipc.receive();
+      VglRPC rpc = mighty_ipc.receive();
       if (rpc.id == VglRPCId::RESTART) {
         log_info("Restart requested! Id: %d", rpc.shared_mem_id);
         reset_encoder(rpc.shared_mem_id);
@@ -345,7 +345,7 @@ void GPUEncTrans::run(void) {
       log_info("Got frame request!");
       if (queue.items() == 0) {
         VglRPC res = {.id = VglRPCId::EMPTY_RESPONSE};
-        sema_ipc.send(res);
+        mighty_ipc.send(res);
       } else {
         queue.get(&ptr);  // dequeue
         RRFrame *frame = (RRFrame *)ptr;
@@ -367,7 +367,7 @@ void GPUEncTrans::run(void) {
         log_info("Sending frame response.. with size %d",
                  shared_mem->get_written_size());
         VglRPC res = {.id = VglRPCId::FRAME_RESPONSE};
-        sema_ipc.send(res);
+        mighty_ipc.send(res);
       }
     }
   } catch (Error &e) {

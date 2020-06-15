@@ -68,7 +68,7 @@ void SharedMem::write(uint8_t *data, size_t len) {
 
 size_t SharedMem::get_written_size() { return shared_mem_ptr->data_len; }
 
-SemaIPC::SemaIPC(bool mighty_server) : mighty_server(mighty_server) {
+VglMightyIPC::VglMightyIPC(bool mighty_server) : mighty_server(mighty_server) {
   if (mighty_server) {
     zmq_frame_response_socket =
         new zmq::socket_t(zmq_context, ZMQ_PULL);  // TODO unique_ptr..
@@ -91,9 +91,9 @@ SemaIPC::SemaIPC(bool mighty_server) : mighty_server(mighty_server) {
   }
 }
 
-SemaIPC::~SemaIPC() { printf("destruct\n"); }
+VglMightyIPC::~VglMightyIPC() { printf("destruct\n"); }
 
-void SemaIPC::send(VglRPC rpc) {
+void VglMightyIPC::send(VglRPC rpc) {
   if (mighty_server) {
     zmq::message_t msg(sizeof(VglRPC));
     memcpy(msg.data(), &rpc, sizeof(VglRPC));
@@ -106,7 +106,7 @@ void SemaIPC::send(VglRPC rpc) {
   }
 }
 
-VglRPC SemaIPC::receive() {
+VglRPC VglMightyIPC::receive() {
   if (mighty_server) {
     return receive_mighty_server();
   } else {
@@ -114,7 +114,7 @@ VglRPC SemaIPC::receive() {
   }
 }
 
-VglRPC SemaIPC::receive_vgl() {
+VglRPC VglMightyIPC::receive_vgl() {
   try {
     zmq::message_t request;
     VglRPC *msg;
@@ -140,7 +140,7 @@ VglRPC SemaIPC::receive_vgl() {
   return ret;
 }
 
-VglRPC SemaIPC::receive_mighty_server() {
+VglRPC VglMightyIPC::receive_mighty_server() {
   try {
     zmq::message_t response;
     zmq::recv_result_t success =

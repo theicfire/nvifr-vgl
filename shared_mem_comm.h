@@ -34,10 +34,10 @@ class SharedMem {
   std::string shared_mem_path;
 };
 
-class SemaIPC {
+class VglMightyIPC {
  public:
-  SemaIPC(bool create);
-  ~SemaIPC();
+  VglMightyIPC(bool create);
+  ~VglMightyIPC();
 
   void send(VglRPC rpc);
   VglRPC receive();
