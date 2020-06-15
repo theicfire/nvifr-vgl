@@ -44,6 +44,7 @@ SharedMem::SharedMem(bool create)
             error("mmap");
         }
         shared_mem_ptr->data_len = 0;
+        printf("Created sharedmem\n");
     }
     else
     {
@@ -62,10 +63,7 @@ SharedMem::SharedMem(bool create)
 
 SharedMem::~SharedMem()
 {
-    // if (shm_unlink(SHARED_MEM_NAME) == -1)
-    // {
-    //     error("shm_unlink");
-    // }
+
     if (munmap(shared_mem_ptr, sizeof(struct shared_memory)) == -1)
     {
         error("munmap");
@@ -98,13 +96,10 @@ SemaIPC::SemaIPC(bool create)
         {
             error("sem_open");
         }
-
-        sem_unlink(TO_MIGHTY_SEM_NAME);
-        if ((frame_response = sem_open(TO_MIGHTY_SEM_NAME, O_CREAT, 0660, 0)) == SEM_FAILED)
-        {
-            error("sem_open");
-        }
         printf("Done create semaphores!\n");
+
+        zmq_frame_response_socket = new zmq::socket_t(zmq_frame_request, ZMQ_PULL); // TODO unique_ptr..
+        zmq_frame_response_socket->bind("ipc:///tmp/test_shared.sock");
     }
     else
     {
@@ -112,30 +107,19 @@ SemaIPC::SemaIPC(bool create)
         {
             error("from_mighty sem_open");
         }
-
-        if ((frame_response = sem_open(TO_MIGHTY_SEM_NAME, 0, 0, 0)) == SEM_FAILED)
-        {
-            error("to_mighty sem_open");
-        }
+        zmq_frame_response_socket = new zmq::socket_t(zmq_frame_request, ZMQ_PUSH); // TODO unique_ptr..
+        zmq_frame_response_socket->connect("ipc:///tmp/test_shared.sock");
     }
+    printf("Yay down here\n");
 }
 
 SemaIPC::~SemaIPC()
 {
-    // printf("Destruct semaipc\n");
-    // if (sem_unlink(FROM_MIGHTY_SEM_NAME) == -1)
-    // {
-    //     printf("could not unlink semaphore..\n");
-    // };
-    // if (sem_unlink(TO_MIGHTY_SEM_NAME) == -1)
-    // {
-    //     printf("could not unlink semaphore..\n");
-    // };
+    printf("destruct\n");
 }
 
 void SemaIPC::signal_frame_request()
 {
-    // TODO error check
     if (sem_post(frame_request) == -1)
     {
         error("failed to sem_post");
@@ -144,7 +128,6 @@ void SemaIPC::signal_frame_request()
 
 void SemaIPC::wait_for_frame_request()
 {
-    // TODO error check
     if (sem_wait(frame_request) == -1)
     {
         error("failed to sem_wait");
@@ -153,17 +136,22 @@ void SemaIPC::wait_for_frame_request()
 
 void SemaIPC::signal_frame_response()
 {
-    if (sem_post(frame_response) == -1)
-    {
-        error("failed to sem_post");
-    }
+    printf("Response!\n");
+    zmq_frame_response_socket->send(zmq::str_buffer("Hello, world"), zmq::send_flags::dontwait);
 }
 
 void SemaIPC::wait_for_frame_response()
 {
-    // TODO error check
-    if (sem_wait(frame_response) == -1)
+    try
     {
-        error("failed to sem_wait");
+        zmq::message_t request;
+        // TODO use return result?
+        printf("Wait for response\n");
+        zmq_frame_response_socket->recv(request, zmq::recv_flags::none);
+        printf("Wooo\n");
+    }
+    catch (zmq::error_t err)
+    {
+        printf("ZMQ msg building: %s", err.what());
     }
 }

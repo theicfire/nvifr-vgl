@@ -616,6 +616,7 @@ extern "C"
 		{
 			debug = fopen("/tmp/vgl.log", "a");
 		}
+		log_info("Call RRTransInit");
 
 		void *handle = NULL;
 		try

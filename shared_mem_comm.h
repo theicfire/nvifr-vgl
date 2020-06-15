@@ -1,8 +1,9 @@
 #include <semaphore.h>
-
 #include <string.h>
 #include <unistd.h>
 #include <stdint.h>
+
+#include "zmq.hpp"
 
 class SharedMem
 {
@@ -31,5 +32,7 @@ public:
 
 private:
     sem_t *frame_request;
-    sem_t *frame_response;
+
+    zmq::context_t zmq_frame_request;
+    zmq::socket_t *zmq_frame_response_socket;
 };

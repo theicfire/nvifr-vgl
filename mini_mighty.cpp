@@ -16,11 +16,12 @@
 
 #include "shared_mem_comm.h"
 
-SharedMem shared_mem(true);
-SemaIPC sema_ipc(true);
-
 int main(int argc, char **argv)
 {
+    printf("MAIN mini_mighty\n");
+    SharedMem shared_mem(true);
+    SemaIPC sema_ipc(true);
+    printf("run loop\n");
     while (1)
     {
         printf("Requesting frame!\n");
