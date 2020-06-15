@@ -27,12 +27,12 @@ public:
     void wait_for_frame_request();
     void signal_frame_request();
 
-    void wait_for_frame_response();
+    bool wait_for_frame_response();
     void signal_frame_response();
+    void publish_ping();
 
 private:
-    sem_t *frame_request;
-
-    zmq::context_t zmq_frame_request;
+    zmq::context_t zmq_context;
+    zmq::socket_t *zmq_frame_request_socket;
     zmq::socket_t *zmq_frame_response_socket;
 };

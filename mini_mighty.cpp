@@ -21,12 +21,33 @@ int main(int argc, char **argv)
     printf("MAIN mini_mighty\n");
     SharedMem shared_mem(true);
     SemaIPC sema_ipc(true);
-    printf("run loop\n");
+    printf("Startup\n");
+    bool is_connected = false;
     while (1)
     {
-        printf("Requesting frame!\n");
-        sema_ipc.signal_frame_request();
-        sema_ipc.wait_for_frame_response();
-        printf("Got frame response. Size is %zu\n", shared_mem.get_written_size());
+        if (!is_connected)
+        {
+            printf("Send ping!\n");
+            sema_ipc.publish_ping();
+            if (sema_ipc.wait_for_frame_response())
+            {
+                is_connected = true;
+            }
+        }
+        else
+        {
+            printf("Requesting frame!\n");
+            sema_ipc.signal_frame_request();
+            printf("Wait for response!\n");
+            if (sema_ipc.wait_for_frame_response())
+            {
+                printf("Got frame response. Size is %zu\n", shared_mem.get_written_size());
+            }
+            else
+            {
+                printf("No response! Timed out.\n");
+                is_connected = false;
+            }
+        }
     }
 }

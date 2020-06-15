@@ -16,11 +16,13 @@ int main(int argc, char **argv)
     SharedMem shared_mem(false);
     SemaIPC sema_ipc(false);
     printf("run loop\n");
+    printf("Start connection!\n");
     while (1)
     {
         printf("Wait for request!\n");
         sema_ipc.wait_for_frame_request();
-        printf("signal response!\n");
+        printf("Send frame!\n");
         sema_ipc.signal_frame_response();
+        sleep(1);
     }
 }

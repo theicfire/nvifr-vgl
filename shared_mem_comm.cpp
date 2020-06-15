@@ -44,7 +44,6 @@ SharedMem::SharedMem(bool create)
             error("mmap");
         }
         shared_mem_ptr->data_len = 0;
-        printf("Created sharedmem\n");
     }
     else
     {
@@ -90,27 +89,24 @@ SemaIPC::SemaIPC(bool create)
 {
     if (create)
     {
-        printf("Create semaphores!\n");
-        sem_unlink(FROM_MIGHTY_SEM_NAME);
-        if ((frame_request = sem_open(FROM_MIGHTY_SEM_NAME, O_CREAT, 0660, 0)) == SEM_FAILED)
-        {
-            error("sem_open");
-        }
-        printf("Done create semaphores!\n");
+        zmq_frame_response_socket = new zmq::socket_t(zmq_context, ZMQ_PULL); // TODO unique_ptr..
+        zmq_frame_response_socket->bind("ipc:///tmp/frame_response.sock");
+        int t = 1000;
+        zmq_frame_response_socket->setsockopt(ZMQ_RCVTIMEO, &t, sizeof(t));
 
-        zmq_frame_response_socket = new zmq::socket_t(zmq_frame_request, ZMQ_PULL); // TODO unique_ptr..
-        zmq_frame_response_socket->bind("ipc:///tmp/test_shared.sock");
+        zmq_frame_request_socket = new zmq::socket_t(zmq_context, ZMQ_PUB); // TODO unique_ptr..
+        zmq_frame_request_socket->bind("ipc:///tmp/frame_request.sock");
     }
     else
     {
-        if ((frame_request = sem_open(FROM_MIGHTY_SEM_NAME, 0, 0, 0)) == SEM_FAILED)
-        {
-            error("from_mighty sem_open");
-        }
-        zmq_frame_response_socket = new zmq::socket_t(zmq_frame_request, ZMQ_PUSH); // TODO unique_ptr..
-        zmq_frame_response_socket->connect("ipc:///tmp/test_shared.sock");
+        zmq_frame_response_socket = new zmq::socket_t(zmq_context, ZMQ_PUSH); // TODO unique_ptr..
+        zmq_frame_response_socket->connect("ipc:///tmp/frame_response.sock");
+
+        zmq_frame_request_socket = new zmq::socket_t(zmq_context, ZMQ_SUB); // TODO unique_ptr..
+        zmq_frame_request_socket->connect("ipc:///tmp/frame_request.sock");
+        const char *filter = "hello";
+        zmq_frame_request_socket->setsockopt(ZMQ_SUBSCRIBE, filter, strlen(filter));
     }
-    printf("Yay down here\n");
 }
 
 SemaIPC::~SemaIPC()
@@ -118,40 +114,50 @@ SemaIPC::~SemaIPC()
     printf("destruct\n");
 }
 
+void SemaIPC::publish_ping()
+{
+    // publish!
+    zmq_frame_request_socket->send(zmq::str_buffer("hello ping"), zmq::send_flags::dontwait);
+}
+
 void SemaIPC::signal_frame_request()
 {
-    if (sem_post(frame_request) == -1)
-    {
-        error("failed to sem_post");
-    }
+    // publish!
+    zmq_frame_request_socket->send(zmq::str_buffer("hello frame"), zmq::send_flags::dontwait);
 }
 
 void SemaIPC::wait_for_frame_request()
-{
-    if (sem_wait(frame_request) == -1)
-    {
-        error("failed to sem_wait");
-    }
-}
-
-void SemaIPC::signal_frame_response()
-{
-    printf("Response!\n");
-    zmq_frame_response_socket->send(zmq::str_buffer("Hello, world"), zmq::send_flags::dontwait);
-}
-
-void SemaIPC::wait_for_frame_response()
 {
     try
     {
         zmq::message_t request;
         // TODO use return result?
-        printf("Wait for response\n");
-        zmq_frame_response_socket->recv(request, zmq::recv_flags::none);
-        printf("Wooo\n");
+        zmq_frame_request_socket->recv(request, zmq::recv_flags::none);
+        // TODO determine if PING message. If so, send PONG and keep receiving.
     }
     catch (zmq::error_t err)
     {
         printf("ZMQ msg building: %s", err.what());
     }
+}
+
+void SemaIPC::signal_frame_response()
+{
+    zmq_frame_response_socket->send(zmq::str_buffer("Hello, world"), zmq::send_flags::dontwait);
+}
+
+bool SemaIPC::wait_for_frame_response()
+{
+    try
+    {
+        zmq::message_t response;
+        // TODO use return result?
+        zmq::recv_result_t success = zmq_frame_response_socket->recv(response, zmq::recv_flags::none);
+        return !!success;
+    }
+    catch (zmq::error_t err)
+    {
+        printf("ZMQ msg building: %s", err.what());
+    }
+    return false;
 }
