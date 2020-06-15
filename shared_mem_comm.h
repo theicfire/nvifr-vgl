@@ -40,14 +40,14 @@ class SemaIPC {
   ~SemaIPC();
 
   VglRPC wait_for_frame_request();
-  void publish(VglRPC rpc);
-
   VglRPC wait_for_frame_response();
-  void signal_frame_response();
-  void signal_empty_response();
+
+  void send(VglRPC rpc);
+  VglRPC receive();
 
  private:
   zmq::context_t zmq_context;
   zmq::socket_t *zmq_frame_request_socket;
   zmq::socket_t *zmq_frame_response_socket;
+  bool mighty_server;
 };

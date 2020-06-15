@@ -344,7 +344,8 @@ void GPUEncTrans::run(void) {
       }
       log_info("Got frame request!");
       if (queue.items() == 0) {
-        sema_ipc.signal_empty_response();
+        VglRPC res = {.id = VglRPCId::EMPTY_RESPONSE};
+        sema_ipc.send(res);
       } else {
         queue.get(&ptr);  // dequeue
         RRFrame *frame = (RRFrame *)ptr;
@@ -365,7 +366,8 @@ void GPUEncTrans::run(void) {
         buf->signalComplete();
         log_info("Sending frame response.. with size %d",
                  shared_mem->get_written_size());
-        sema_ipc.signal_frame_response();
+        VglRPC res = {.id = VglRPCId::FRAME_RESPONSE};
+        sema_ipc.send(res);
       }
     }
   } catch (Error &e) {

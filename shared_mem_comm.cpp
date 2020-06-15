@@ -17,11 +17,11 @@ void error(const char *msg) {
   exit(1);
 }
 
-SharedMem::SharedMem(bool create, uint64_t shared_mem_id) {
+SharedMem::SharedMem(bool mighty_server, uint64_t shared_mem_id) {
   std::stringstream ss;
   ss << "/shared-mem-" << shared_mem_id;
   shared_mem_path = ss.str();
-  if (create) {
+  if (mighty_server) {
     if ((fd_shm = shm_open(shared_mem_path.c_str(), O_RDWR | O_CREAT, 0660)) ==
         -1) {
       error("shm_open");
@@ -68,8 +68,8 @@ void SharedMem::write(uint8_t *data, size_t len) {
 
 size_t SharedMem::get_written_size() { return shared_mem_ptr->data_len; }
 
-SemaIPC::SemaIPC(bool create) {
-  if (create) {
+SemaIPC::SemaIPC(bool mighty_server) : mighty_server(mighty_server) {
+  if (mighty_server) {
     zmq_frame_response_socket =
         new zmq::socket_t(zmq_context, ZMQ_PULL);  // TODO unique_ptr..
     zmq_frame_response_socket->bind("ipc:///tmp/frame_response.sock");
@@ -93,10 +93,17 @@ SemaIPC::SemaIPC(bool create) {
 
 SemaIPC::~SemaIPC() { printf("destruct\n"); }
 
-void SemaIPC::publish(VglRPC rpc) {
-  zmq::message_t msg(sizeof(VglRPC));
-  memcpy(msg.data(), &rpc, sizeof(VglRPC));
-  zmq_frame_request_socket->send(msg, zmq::send_flags::dontwait);
+void SemaIPC::send(VglRPC rpc) {
+  if (mighty_server) {
+    zmq::message_t msg(sizeof(VglRPC));
+    memcpy(msg.data(), &rpc, sizeof(VglRPC));
+    zmq_frame_request_socket->send(msg, zmq::send_flags::dontwait);
+
+  } else {
+    zmq::message_t msg(sizeof(VglRPC));
+    memcpy(msg.data(), &rpc, sizeof(VglRPC));
+    zmq_frame_response_socket->send(msg, zmq::send_flags::dontwait);
+  }
 }
 
 VglRPC SemaIPC::wait_for_frame_request() {
@@ -123,20 +130,6 @@ VglRPC SemaIPC::wait_for_frame_request() {
   }
   VglRPC ret = {.id = VglRPCId::NONE};
   return ret;
-}
-
-void SemaIPC::signal_frame_response() {
-  zmq::message_t msg(sizeof(VglRPC));
-  VglRPC rpc = {.id = VglRPCId::FRAME_RESPONSE};
-  memcpy(msg.data(), &rpc, sizeof(VglRPC));
-  zmq_frame_response_socket->send(msg, zmq::send_flags::dontwait);
-}
-
-void SemaIPC::signal_empty_response() {
-  zmq::message_t msg(sizeof(VglRPC));
-  VglRPC rpc = {.id = VglRPCId::EMPTY_RESPONSE};
-  memcpy(msg.data(), &rpc, sizeof(VglRPC));
-  zmq_frame_response_socket->send(msg, zmq::send_flags::dontwait);
 }
 
 VglRPC SemaIPC::wait_for_frame_response() {
