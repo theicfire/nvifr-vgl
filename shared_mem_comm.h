@@ -27,6 +27,7 @@ class SharedMem {
   ~SharedMem();
   void write(uint8_t *data, size_t len);
   size_t get_written_size();
+  static uint64_t generate_mem_id();
 
  private:
   struct shared_memory *shared_mem_ptr;

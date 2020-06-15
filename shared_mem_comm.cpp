@@ -57,6 +57,10 @@ SharedMem::~SharedMem() {
   shm_unlink(shared_mem_path.c_str());
 }
 
+uint64_t SharedMem::generate_mem_id() {
+  return static_cast<uint64_t>(time(NULL));
+}
+
 void SharedMem::write(uint8_t *data, size_t len) {
   if (len > sizeof(shared_mem_ptr->data) / sizeof(shared_mem_ptr->data[0])) {
     printf("Writing too much data\n");

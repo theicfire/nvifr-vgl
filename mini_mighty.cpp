@@ -18,8 +18,8 @@
 
 int main(int argc, char **argv) {
   printf("MAIN mini_mighty\n");
-  uint64_t seconds = static_cast<uint64_t>(time(NULL));
-  SharedMem shared_mem(true, seconds);
+  uint64_t shared_mem_id = SharedMem::generate_mem_id();
+  SharedMem shared_mem(true, shared_mem_id);
   VglMightyIPC vgl_ipc(true);
   printf("Startup\n");
   bool is_connected = false;
@@ -32,7 +32,7 @@ int main(int argc, char **argv) {
       if (response.id != VglRPCId::TIMEOUT) {
         is_connected = true;
         printf("Send restart!\n");
-        VglRPC rpc = {.id = VglRPCId::RESTART, .shared_mem_id = seconds};
+        VglRPC rpc = {.id = VglRPCId::RESTART, .shared_mem_id = shared_mem_id};
         vgl_ipc.send(rpc);
       }
     } else {
