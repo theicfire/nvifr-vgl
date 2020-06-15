@@ -43,5 +43,3 @@ class MTimer {
         .count();
   }
 };
-
-
