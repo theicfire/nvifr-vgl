@@ -104,8 +104,7 @@ SemaIPC::SemaIPC(bool create)
 
         zmq_frame_request_socket = new zmq::socket_t(zmq_context, ZMQ_SUB); // TODO unique_ptr..
         zmq_frame_request_socket->connect("ipc:///tmp/frame_request.sock");
-        const char *filter = "hello";
-        zmq_frame_request_socket->setsockopt(ZMQ_SUBSCRIBE, filter, strlen(filter));
+        zmq_frame_request_socket->setsockopt(ZMQ_SUBSCRIBE, "", 0);
     }
 }
 
