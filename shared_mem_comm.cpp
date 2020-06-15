@@ -132,9 +132,8 @@ VglRPC VglMightyIPC::receive_vgl() {
       }
     }
     return *msg;
-    // printf("Got msg: %s\n", request.to_string().c_str());
   } catch (zmq::error_t err) {
-    printf("ZMQ msg building: %s", err.what());
+    printf("Error: ZMQ msg building: %s", err.what());
   }
   VglRPC ret = {.id = VglRPCId::NONE};
   return ret;
@@ -153,9 +152,8 @@ VglRPC VglMightyIPC::receive_mighty_server() {
       return ret;
     }
   } catch (zmq::error_t err) {
-    printf("ZMQ msg building: %s", err.what());
+    printf("Error: ZMQ msg building: %s", err.what());
   }
-  printf("Return none!\n");
   VglRPC ret = {.id = VglRPCId::NONE};
   return ret;
 }
