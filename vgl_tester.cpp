@@ -12,18 +12,17 @@
 
 int main(int argc, char **argv) {
   printf("vgl_tester\n");
-  SharedMem shared_mem(false);
   SemaIPC sema_ipc(false);
   printf("run loop\n");
   printf("Start connection!\n");
   while (1) {
     printf("Wait for request!\n");
-    VglRPCId id = sema_ipc.wait_for_frame_request();
-    if (id == VglRPCId::FRAME_REQUEST) {
+    VglRPC rpc = sema_ipc.wait_for_frame_request();
+    if (rpc.id == VglRPCId::FRAME_REQUEST) {
       printf("Got frame request. Sending response.\n");
       sema_ipc.signal_frame_response();
-    } else if (id == VglRPCId::RESTART) {
-      printf("Got restart\n");
+    } else if (rpc.id == VglRPCId::RESTART) {
+      printf("Got restart. id: %ld\n", rpc.shared_mem_id);
     }
     sleep(1);
   }

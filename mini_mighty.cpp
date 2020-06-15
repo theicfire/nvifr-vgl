@@ -18,21 +18,26 @@
 
 int main(int argc, char **argv) {
   printf("MAIN mini_mighty\n");
-  SharedMem shared_mem(true);
+  uint64_t seconds = static_cast<uint64_t>(time(NULL));
+  SharedMem shared_mem(true, seconds);
   SemaIPC sema_ipc(true);
   printf("Startup\n");
   bool is_connected = false;
   while (1) {
     if (!is_connected) {
       printf("Send ping!\n");
-      sema_ipc.publish(VglRPCId::PING);
+      VglRPC rpc_ping = {.id = VglRPCId::PING};
+      sema_ipc.publish(rpc_ping);
       if (sema_ipc.wait_for_frame_response()) {
         is_connected = true;
-        sema_ipc.publish(VglRPCId::RESTART);
+        printf("Send restart!\n");
+        VglRPC rpc = {.id = VglRPCId::RESTART, .shared_mem_id = seconds};
+        sema_ipc.publish(rpc);
       }
     } else {
       printf("Requesting frame!\n");
-      sema_ipc.publish(VglRPCId::FRAME_REQUEST);
+      VglRPC rpc_req = {.id = VglRPCId::FRAME_REQUEST};
+      sema_ipc.publish(rpc_req);
       printf("Wait for response!\n");
       if (sema_ipc.wait_for_frame_response()) {
         printf("Got frame response. Size is %zu\n",

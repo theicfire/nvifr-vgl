@@ -7,10 +7,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#define SHARED_MEM_NAME "/posix-shared-mem-example"
-#define FROM_MIGHTY_SEM_NAME "/from-mighty"
-#define TO_MIGHTY_SEM_NAME "/to-mighty"
-
 struct shared_memory {
   size_t data_len;
   uint8_t data[1000 * 1000];  // 1mb
@@ -21,10 +17,13 @@ void error(const char *msg) {
   exit(1);
 }
 
-SharedMem::SharedMem(bool create) {
+SharedMem::SharedMem(bool create, uint64_t shared_mem_id) {
+  std::stringstream ss;
+  ss << "/shared-mem-" << shared_mem_id;
+  shared_mem_path = ss.str();
   if (create) {
-    shm_unlink(SHARED_MEM_NAME);  // TODO this ok?
-    if ((fd_shm = shm_open(SHARED_MEM_NAME, O_RDWR | O_CREAT, 0660)) == -1) {
+    if ((fd_shm = shm_open(shared_mem_path.c_str(), O_RDWR | O_CREAT, 0660)) ==
+        -1) {
       error("shm_open");
     }
 
@@ -39,7 +38,7 @@ SharedMem::SharedMem(bool create) {
     }
     shared_mem_ptr->data_len = 0;
   } else {
-    if ((fd_shm = shm_open(SHARED_MEM_NAME, O_RDWR, 0)) == -1) {
+    if ((fd_shm = shm_open(shared_mem_path.c_str(), O_RDWR, 0)) == -1) {
       error("shm_open");
     }
 
@@ -55,6 +54,7 @@ SharedMem::~SharedMem() {
   if (munmap(shared_mem_ptr, sizeof(struct shared_memory)) == -1) {
     error("munmap");
   }
+  shm_unlink(shared_mem_path.c_str());
 }
 
 void SharedMem::write(uint8_t *data, size_t len) {
@@ -93,15 +93,13 @@ SemaIPC::SemaIPC(bool create) {
 
 SemaIPC::~SemaIPC() { printf("destruct\n"); }
 
-void SemaIPC::publish(VglRPCId id) {
+void SemaIPC::publish(VglRPC rpc) {
   zmq::message_t msg(sizeof(VglRPC));
-  VglRPC ping = {.id = id};
-  memcpy(msg.data(), &ping, sizeof(VglRPC));
+  memcpy(msg.data(), &rpc, sizeof(VglRPC));
   zmq_frame_request_socket->send(msg, zmq::send_flags::dontwait);
 }
 
-// TODO full message
-VglRPCId SemaIPC::wait_for_frame_request() {
+VglRPC SemaIPC::wait_for_frame_request() {
   try {
     zmq::message_t request;
     VglRPC *msg;
@@ -118,12 +116,13 @@ VglRPCId SemaIPC::wait_for_frame_request() {
         break;
       }
     }
-    return msg->id;
+    return *msg;
     // printf("Got msg: %s\n", request.to_string().c_str());
   } catch (zmq::error_t err) {
     printf("ZMQ msg building: %s", err.what());
   }
-  return VglRPCId::NONE;
+  VglRPC ret = {.id = VglRPCId::NONE};
+  return ret;
 }
 
 void SemaIPC::signal_frame_response() {

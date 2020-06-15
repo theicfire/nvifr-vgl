@@ -16,11 +16,12 @@ enum VglRPCId {
 
 struct VglRPC {
   VglRPCId id;
+  uint64_t shared_mem_id;
 };
 
 class SharedMem {
  public:
-  SharedMem(bool create);
+  SharedMem(bool create, uint64_t shared_mem_id);
   ~SharedMem();
   void write(uint8_t *data, size_t len);
   size_t get_written_size();
@@ -28,6 +29,7 @@ class SharedMem {
  private:
   struct shared_memory *shared_mem_ptr;
   int fd_shm;
+  std::string shared_mem_path;
 };
 
 class SemaIPC {
@@ -35,8 +37,8 @@ class SemaIPC {
   SemaIPC(bool create);
   ~SemaIPC();
 
-  VglRPCId wait_for_frame_request();
-  void publish(VglRPCId id);
+  VglRPC wait_for_frame_request();
+  void publish(VglRPC rpc);
 
   bool wait_for_frame_response();
   void signal_frame_response();

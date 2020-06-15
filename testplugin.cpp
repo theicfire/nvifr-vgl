@@ -219,7 +219,6 @@ class GPUEncTrans : public Runnable {
         width(0),
         height(0),
         dpy3DClone(NULL),
-        shared_mem(false),
         sema_ipc(false) {
     memset(rr_frame, 0, sizeof(RRFrame) * NFRAMES);
     for (int i = 0; i < NFRAMES; i++) rr_frame[i].opaque = (void *)&buf[i];
@@ -228,13 +227,6 @@ class GPUEncTrans : public Runnable {
     if (!dpy3D) THROW("OpenGL context created by VirtualGL Faker is invalid");
     if (!(dpy3DClone = XOpenDisplay(DisplayString(dpy3D))))
       THROW("Could not clone 3D X server connection");
-
-    char tmp[256];
-    snprintf(tmp, 256, "%lx.h264", win);
-    m_fpOut = fopen(tmp, "wb");
-    if (m_fpOut == NULL) {
-      THROW("Failed to create output file.");
-    }
 
     thread = new Thread(this);
     thread->start();
@@ -303,6 +295,7 @@ class GPUEncTrans : public Runnable {
   void setupNVIFRHwEnc(int width, int height);
   void captureHwEnc(GLuint fbo, GLuint rbo);
   void captureSys(GLuint fbo, GLuint rbo);
+  void reset_encoder(uint64_t shared_mem_id);
 
  private:
   void throw_nvifr_error(const char *function, int line);
@@ -333,7 +326,7 @@ class GPUEncTrans : public Runnable {
   Thread *thread;
   int width, height;
   Display *dpy3DClone;
-  SharedMem shared_mem;
+  std::unique_ptr<SharedMem> shared_mem;
   SemaIPC sema_ipc;
 };
 
@@ -344,9 +337,10 @@ void GPUEncTrans::run(void) {
     while (!shutdown) {
       void *ptr = NULL;
       log_info("Waiting for frame request..");
-      VglRPCId id = sema_ipc.wait_for_frame_request();
-      if (id == VglRPCId::RESTART) {
-        log_info("Restart requested!");
+      VglRPC rpc = sema_ipc.wait_for_frame_request();
+      if (rpc.id == VglRPCId::RESTART) {
+        log_info("Restart requested! Id: %d", rpc.shared_mem_id);
+        reset_encoder(rpc.shared_mem_id);
       }
       log_info("Got frame request!");
       queue.get(&ptr);  // dequeue
@@ -367,7 +361,7 @@ void GPUEncTrans::run(void) {
       // encoded.
       buf->signalComplete();
       log_info("Sending frame response.. with size %d",
-               shared_mem.get_written_size());
+               shared_mem->get_written_size());
       sema_ipc.signal_frame_response();
     }
   } catch (Error &e) {
@@ -422,6 +416,26 @@ void GPUEncTrans::setupNVIFRSYS() {
       NV_IFROGL_SUCCESS) {
     throw_nvifr_error("nvIFROGLCreateTransferToSysObject()", __LINE__);
   }
+}
+
+void GPUEncTrans::reset_encoder(uint64_t shared_mem_id) {
+  if (m_hTransferObject) {
+    XCapture::nvIFR.nvIFROGLDestroyTransferObject(m_hTransferObject);
+  }
+  m_hTransferObject = NULL;
+
+  if (m_fpOut) {
+    fclose(m_fpOut);
+  }
+  std::stringstream ss;
+  ss << "window-" << shared_mem_id << ".h264";
+  log_info("new file: %s", ss.str().c_str());
+  m_fpOut = fopen(ss.str().c_str(), "wb");
+  if (m_fpOut == NULL) {
+    THROW("Failed to create output file.");
+  }
+
+  shared_mem = std::make_unique<SharedMem>(false, shared_mem_id);
 }
 
 void GPUEncTrans::setupNVIFRHwEnc(int width_, int height_) {
@@ -496,7 +510,7 @@ void GPUEncTrans::captureHwEnc(GLuint fbo, GLuint rbo) {
     // write to the file
     if (m_fpOut) fwrite(data, 1, dataSize, m_fpOut);
 
-    shared_mem.write((uint8_t *)data, dataSize);
+    shared_mem->write((uint8_t *)data, dataSize);
 
     // release the data buffer
     if (XCapture::nvIFR.nvIFROGLReleaseTransferData(m_hTransferObject) !=
