@@ -113,36 +113,54 @@ SemaIPC::~SemaIPC()
     printf("destruct\n");
 }
 
-void SemaIPC::publish_ping()
+void SemaIPC::publish(VglRPCId id)
 {
-    // publish!
-    zmq_frame_request_socket->send(zmq::str_buffer("hello ping"), zmq::send_flags::dontwait);
+    zmq::message_t msg(sizeof(VglRPC));
+    VglRPC ping = {.id = id};
+    memcpy(msg.data(), &ping, sizeof(VglRPC));
+    zmq_frame_request_socket->send(msg, zmq::send_flags::dontwait);
 }
 
-void SemaIPC::signal_frame_request()
-{
-    // publish!
-    zmq_frame_request_socket->send(zmq::str_buffer("hello frame"), zmq::send_flags::dontwait);
-}
-
-void SemaIPC::wait_for_frame_request()
+// TODO full message
+VglRPCId SemaIPC::wait_for_frame_request()
 {
     try
     {
         zmq::message_t request;
+        VglRPC *msg;
         // TODO use return result?
-        zmq_frame_request_socket->recv(request, zmq::recv_flags::none);
-        // TODO determine if PING message. If so, send PONG and keep receiving.
+        while (true)
+        {
+            zmq_frame_request_socket->recv(request, zmq::recv_flags::none);
+            msg = static_cast<VglRPC *>(request.data());
+            if (msg->id == VglRPCId::PING)
+            {
+                zmq::message_t msg(sizeof(VglRPC));
+                VglRPC pong = {.id = VglRPCId::PONG};
+                memcpy(msg.data(), &pong, sizeof(VglRPC));
+                zmq_frame_response_socket->send(msg, zmq::send_flags::dontwait);
+            }
+            else
+            {
+                break;
+            }
+        }
+        return msg->id;
+        // printf("Got msg: %s\n", request.to_string().c_str());
     }
     catch (zmq::error_t err)
     {
         printf("ZMQ msg building: %s", err.what());
     }
+    return VglRPCId::NONE;
 }
 
 void SemaIPC::signal_frame_response()
 {
-    zmq_frame_response_socket->send(zmq::str_buffer("Hello, world"), zmq::send_flags::dontwait);
+    zmq::message_t msg(sizeof(VglRPC));
+    VglRPC rpc = {.id = VglRPCId::FRAME_RESPONSE};
+    memcpy(msg.data(), &rpc, sizeof(VglRPC));
+    zmq_frame_response_socket->send(msg, zmq::send_flags::dontwait);
 }
 
 bool SemaIPC::wait_for_frame_response()

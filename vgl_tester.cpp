@@ -20,9 +20,16 @@ int main(int argc, char **argv)
     while (1)
     {
         printf("Wait for request!\n");
-        sema_ipc.wait_for_frame_request();
-        printf("Send frame!\n");
-        sema_ipc.signal_frame_response();
+        VglRPCId id = sema_ipc.wait_for_frame_request();
+        if (id == VglRPCId::FRAME_REQUEST)
+        {
+            printf("Got frame request. Sending response.\n");
+            sema_ipc.signal_frame_response();
+        }
+        else if (id == VglRPCId::RESTART)
+        {
+            printf("Got restart\n");
+        }
         sleep(1);
     }
 }

@@ -28,16 +28,17 @@ int main(int argc, char **argv)
         if (!is_connected)
         {
             printf("Send ping!\n");
-            sema_ipc.publish_ping();
+            sema_ipc.publish(VglRPCId::PING);
             if (sema_ipc.wait_for_frame_response())
             {
                 is_connected = true;
+                sema_ipc.publish(VglRPCId::RESTART);
             }
         }
         else
         {
             printf("Requesting frame!\n");
-            sema_ipc.signal_frame_request();
+            sema_ipc.publish(VglRPCId::FRAME_REQUEST);
             printf("Wait for response!\n");
             if (sema_ipc.wait_for_frame_response())
             {

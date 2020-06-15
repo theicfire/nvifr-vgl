@@ -5,6 +5,21 @@
 
 #include "zmq.hpp"
 
+enum VglRPCId
+{
+    NONE,
+    RESTART,
+    PING,
+    PONG,
+    FRAME_REQUEST,
+    FRAME_RESPONSE,
+};
+
+struct VglRPC
+{
+    VglRPCId id;
+};
+
 class SharedMem
 {
 public:
@@ -24,12 +39,11 @@ public:
     SemaIPC(bool create);
     ~SemaIPC();
 
-    void wait_for_frame_request();
-    void signal_frame_request();
+    VglRPCId wait_for_frame_request();
+    void publish(VglRPCId id);
 
     bool wait_for_frame_response();
     void signal_frame_response();
-    void publish_ping();
 
 private:
     zmq::context_t zmq_context;

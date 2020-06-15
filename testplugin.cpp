@@ -362,7 +362,11 @@ void GPUEncTrans::run(void)
 		{
 			void *ptr = NULL;
 			log_info("Waiting for frame request..");
-			sema_ipc.wait_for_frame_request();
+			VglRPCId id = sema_ipc.wait_for_frame_request();
+			if (id == VglRPCId::RESTART)
+			{
+				log_info("Restart requested!");
+			}
 			log_info("Got frame request!");
 			queue.get(&ptr); // dequeue
 			RRFrame *frame = (RRFrame *)ptr;
@@ -382,7 +386,7 @@ void GPUEncTrans::run(void)
 
 			// A buffer is complete either when it is spoiled or when it has been encoded.
 			buf->signalComplete();
-			log_info("Sending frame response..");
+			log_info("Sending frame response.. with size %d", shared_mem.get_written_size());
 			sema_ipc.signal_frame_response();
 		}
 	}
