@@ -337,7 +337,7 @@ void GPUEncTrans::run(void) {
     while (!shutdown) {
       void *ptr = NULL;
       log_info("Waiting for frame request..");
-      VglRPC rpc = sema_ipc.wait_for_frame_request();
+      VglRPC rpc = sema_ipc.receive();
       if (rpc.id == VglRPCId::RESTART) {
         log_info("Restart requested! Id: %d", rpc.shared_mem_id);
         reset_encoder(rpc.shared_mem_id);

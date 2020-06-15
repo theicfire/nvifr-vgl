@@ -106,7 +106,15 @@ void SemaIPC::send(VglRPC rpc) {
   }
 }
 
-VglRPC SemaIPC::wait_for_frame_request() {
+VglRPC SemaIPC::receive() {
+  if (mighty_server) {
+    return receive_mighty_server();
+  } else {
+    return receive_vgl();
+  }
+}
+
+VglRPC SemaIPC::receive_vgl() {
   try {
     zmq::message_t request;
     VglRPC *msg;
@@ -132,7 +140,7 @@ VglRPC SemaIPC::wait_for_frame_request() {
   return ret;
 }
 
-VglRPC SemaIPC::wait_for_frame_response() {
+VglRPC SemaIPC::receive_mighty_server() {
   try {
     zmq::message_t response;
     zmq::recv_result_t success =

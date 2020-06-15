@@ -28,7 +28,7 @@ int main(int argc, char **argv) {
       printf("Send ping!\n");
       VglRPC rpc_ping = {.id = VglRPCId::PING};
       sema_ipc.send(rpc_ping);
-      VglRPC response = sema_ipc.wait_for_frame_response();
+      VglRPC response = sema_ipc.receive();
       if (response.id != VglRPCId::TIMEOUT) {
         is_connected = true;
         printf("Send restart!\n");
@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
     } else {
       VglRPC rpc_req = {.id = VglRPCId::FRAME_REQUEST};
       sema_ipc.send(rpc_req);
-      VglRPC response = sema_ipc.wait_for_frame_response();
+      VglRPC response = sema_ipc.receive();
       if (response.id == VglRPCId::FRAME_RESPONSE) {
         printf("Got frame response. Size is %zu\n",
                shared_mem.get_written_size());

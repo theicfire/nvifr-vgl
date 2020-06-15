@@ -39,13 +39,12 @@ class SemaIPC {
   SemaIPC(bool create);
   ~SemaIPC();
 
-  VglRPC wait_for_frame_request();
-  VglRPC wait_for_frame_response();
-
   void send(VglRPC rpc);
   VglRPC receive();
 
  private:
+  VglRPC receive_vgl();
+  VglRPC receive_mighty_server();
   zmq::context_t zmq_context;
   zmq::socket_t *zmq_frame_request_socket;
   zmq::socket_t *zmq_frame_response_socket;

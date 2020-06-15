@@ -17,7 +17,7 @@ int main(int argc, char **argv) {
   printf("Start connection!\n");
   while (1) {
     printf("Wait for request!\n");
-    VglRPC rpc = sema_ipc.wait_for_frame_request();
+    VglRPC rpc = sema_ipc.receive();
     if (rpc.id == VglRPCId::FRAME_REQUEST) {
       printf("Got frame request. Sending response.\n");
       VglRPC res = {.id = VglRPCId::FRAME_RESPONSE};
