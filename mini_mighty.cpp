@@ -28,23 +28,27 @@ int main(int argc, char **argv) {
       printf("Send ping!\n");
       VglRPC rpc_ping = {.id = VglRPCId::PING};
       sema_ipc.publish(rpc_ping);
-      if (sema_ipc.wait_for_frame_response()) {
+      VglRPC response = sema_ipc.wait_for_frame_response();
+      if (response.id != VglRPCId::TIMEOUT) {
         is_connected = true;
         printf("Send restart!\n");
         VglRPC rpc = {.id = VglRPCId::RESTART, .shared_mem_id = seconds};
         sema_ipc.publish(rpc);
       }
     } else {
-      printf("Requesting frame!\n");
       VglRPC rpc_req = {.id = VglRPCId::FRAME_REQUEST};
       sema_ipc.publish(rpc_req);
-      printf("Wait for response!\n");
-      if (sema_ipc.wait_for_frame_response()) {
+      VglRPC response = sema_ipc.wait_for_frame_response();
+      if (response.id == VglRPCId::FRAME_RESPONSE) {
         printf("Got frame response. Size is %zu\n",
                shared_mem.get_written_size());
-      } else {
-        printf("No response! Timed out.\n");
+      } else if (response.id == VglRPCId::EMPTY_RESPONSE) {
+        usleep(20000);
+      } else if (response.id == VglRPCId::TIMEOUT) {
+        printf("Timed out.\n");
         is_connected = false;
+      } else {
+        printf("Error: Some other response\n");
       }
     }
   }

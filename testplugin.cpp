@@ -343,26 +343,30 @@ void GPUEncTrans::run(void) {
         reset_encoder(rpc.shared_mem_id);
       }
       log_info("Got frame request!");
-      queue.get(&ptr);  // dequeue
-      RRFrame *frame = (RRFrame *)ptr;
-      if (shutdown) return;
-      if (!frame) THROW("Queue has been shut down");
-      ready.signal();
+      if (queue.items() == 0) {
+        sema_ipc.signal_empty_response();
+      } else {
+        queue.get(&ptr);  // dequeue
+        RRFrame *frame = (RRFrame *)ptr;
+        if (shutdown) return;
+        if (!frame) THROW("Queue has been shut down");
+        ready.signal();
 
-      GPUEncBuffer *buf = (GPUEncBuffer *)frame->opaque;
-      buf->makeCurrent(dpy3DClone);
-      // setupNVIFRSYS()
-      setupNVIFRHwEnc(frame->w, frame->h);
-      // captureSys(buf->getFBO());
-      captureHwEnc(buf->getFBO(), buf->getRBO());
-      glXMakeContextCurrent(dpy3DClone, 0, 0, 0);
+        GPUEncBuffer *buf = (GPUEncBuffer *)frame->opaque;
+        buf->makeCurrent(dpy3DClone);
+        // setupNVIFRSYS()
+        setupNVIFRHwEnc(frame->w, frame->h);
+        // captureSys(buf->getFBO());
+        captureHwEnc(buf->getFBO(), buf->getRBO());
+        glXMakeContextCurrent(dpy3DClone, 0, 0, 0);
 
-      // A buffer is complete either when it is spoiled or when it has been
-      // encoded.
-      buf->signalComplete();
-      log_info("Sending frame response.. with size %d",
-               shared_mem->get_written_size());
-      sema_ipc.signal_frame_response();
+        // A buffer is complete either when it is spoiled or when it has been
+        // encoded.
+        buf->signalComplete();
+        log_info("Sending frame response.. with size %d",
+                 shared_mem->get_written_size());
+        sema_ipc.signal_frame_response();
+      }
     }
   } catch (Error &e) {
     glXMakeContextCurrent(dpy3DClone, 0, 0, 0);

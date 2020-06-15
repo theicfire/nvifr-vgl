@@ -7,11 +7,13 @@
 
 enum VglRPCId {
   NONE,
+  TIMEOUT,
   RESTART,
   PING,
   PONG,
   FRAME_REQUEST,
   FRAME_RESPONSE,
+  EMPTY_RESPONSE,
 };
 
 struct VglRPC {
@@ -40,8 +42,9 @@ class SemaIPC {
   VglRPC wait_for_frame_request();
   void publish(VglRPC rpc);
 
-  bool wait_for_frame_response();
+  VglRPC wait_for_frame_response();
   void signal_frame_response();
+  void signal_empty_response();
 
  private:
   zmq::context_t zmq_context;

@@ -108,10 +108,10 @@ VglRPC SemaIPC::wait_for_frame_request() {
       zmq_frame_request_socket->recv(request, zmq::recv_flags::none);
       msg = static_cast<VglRPC *>(request.data());
       if (msg->id == VglRPCId::PING) {
-        zmq::message_t msg(sizeof(VglRPC));
+        zmq::message_t send_msg(sizeof(VglRPC));
         VglRPC pong = {.id = VglRPCId::PONG};
-        memcpy(msg.data(), &pong, sizeof(VglRPC));
-        zmq_frame_response_socket->send(msg, zmq::send_flags::dontwait);
+        memcpy(send_msg.data(), &pong, sizeof(VglRPC));
+        zmq_frame_response_socket->send(send_msg, zmq::send_flags::dontwait);
       } else {
         break;
       }
@@ -132,15 +132,29 @@ void SemaIPC::signal_frame_response() {
   zmq_frame_response_socket->send(msg, zmq::send_flags::dontwait);
 }
 
-bool SemaIPC::wait_for_frame_response() {
+void SemaIPC::signal_empty_response() {
+  zmq::message_t msg(sizeof(VglRPC));
+  VglRPC rpc = {.id = VglRPCId::EMPTY_RESPONSE};
+  memcpy(msg.data(), &rpc, sizeof(VglRPC));
+  zmq_frame_response_socket->send(msg, zmq::send_flags::dontwait);
+}
+
+VglRPC SemaIPC::wait_for_frame_response() {
   try {
     zmq::message_t response;
-    // TODO use return result?
     zmq::recv_result_t success =
         zmq_frame_response_socket->recv(response, zmq::recv_flags::none);
-    return !!success;
+    if (success) {
+      VglRPC *msg = static_cast<VglRPC *>(response.data());
+      return *msg;
+    } else {
+      VglRPC ret = {.id = VglRPCId::TIMEOUT};
+      return ret;
+    }
   } catch (zmq::error_t err) {
     printf("ZMQ msg building: %s", err.what());
   }
-  return false;
+  printf("Return none!\n");
+  VglRPC ret = {.id = VglRPCId::NONE};
+  return ret;
 }
