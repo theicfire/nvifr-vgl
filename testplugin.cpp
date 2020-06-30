@@ -148,8 +148,8 @@ class GPUEncBuffer {
     log_info("Call GPUEncBuffer::init");
 
     // helps w/ resize .. maybe makes stuff less stable?
-    draw = glXGetCurrentDrawable();
-    read = glXGetCurrentReadDrawable();
+    // draw = glXGetCurrentDrawable();
+    // read = glXGetCurrentReadDrawable();
 
     width = width_;
     height = height_;
