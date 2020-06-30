@@ -35,4 +35,4 @@ vgl_tester: shared_mem_comm.o vgl_tester.o
 	$(CXX) $(CXXFLAGS) -o $@ $^ -lrt -lpthread -lzmq
 
 clean:
-	$(RM) *.so *.o nvifr-encoder/*.o nvifr-encoder/NVIFROpenGLChrome mini_mighty
+	$(RM) *.so *.o nvifr-encoder/*.o nvifr-encoder/NVIFROpenGLChrome mini_mighty vgl_tester *.h264
