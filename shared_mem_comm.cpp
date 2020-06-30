@@ -6,6 +6,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sstream>
 
 struct shared_memory {
   size_t data_len;
@@ -72,13 +73,22 @@ void SharedMem::write(uint8_t *data, size_t len) {
 
 size_t SharedMem::get_written_size() { return shared_mem_ptr->data_len; }
 
+std::vector<uint8_t> SharedMem::get_frame() {
+  std::vector<uint8_t> ret((const uint8_t *)shared_mem_ptr->data,
+                           (const uint8_t *)shared_mem_ptr->data +
+                               shared_mem_ptr->data_len);  // TODO slow copy
+  return ret;
+}
+
 VglMightyIPC::VglMightyIPC(bool mighty_server) : mighty_server(mighty_server) {
+  printf("init vglipc\n");
   if (mighty_server) {
     zmq_frame_response_socket =
         new zmq::socket_t(zmq_context, ZMQ_PULL);  // TODO unique_ptr..
     zmq_frame_response_socket->bind("ipc:///tmp/frame_response.sock");
-    int t = 1000;
-    zmq_frame_response_socket->setsockopt(ZMQ_RCVTIMEO, &t, sizeof(t));
+    int TIMEOuT__ms = 200;
+    zmq_frame_response_socket->setsockopt(ZMQ_RCVTIMEO, &TIMEOuT__ms,
+                                          sizeof(TIMEOuT__ms));
 
     zmq_frame_request_socket =
         new zmq::socket_t(zmq_context, ZMQ_PUB);  // TODO unique_ptr..
@@ -118,13 +128,37 @@ VglRPC VglMightyIPC::receive() {
   }
 }
 
+void VglMightyIPC::clear_receive() {
+  if (mighty_server) {
+    try {
+      while (true) {
+        zmq::message_t request;
+        zmq::recv_result_t success =
+            zmq_frame_response_socket->recv(request, zmq::recv_flags::none);
+        if (!success) {
+          return;
+        }
+      }
+    } catch (zmq::error_t err) {
+      printf("Error: ZMQ msg building: %s", err.what());
+    }
+
+  } else {
+    printf("Clear not implemented for this direction\n");
+  }
+}
+
 VglRPC VglMightyIPC::receive_vgl() {
   try {
     zmq::message_t request;
     VglRPC *msg;
     // TODO use return result?
     while (true) {
-      zmq_frame_request_socket->recv(request, zmq::recv_flags::none);
+      zmq::recv_result_t success =
+          zmq_frame_request_socket->recv(request, zmq::recv_flags::none);
+      if (!success) {
+        printf("ERROR: recv was not successful somehow");
+      }
       msg = static_cast<VglRPC *>(request.data());
       if (msg->id == VglRPCId::PING) {
         zmq::message_t send_msg(sizeof(VglRPC));

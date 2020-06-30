@@ -25,13 +25,14 @@ int main(int argc, char **argv) {
   bool is_connected = false;
   while (1) {
     if (!is_connected) {
+      vgl_ipc.clear_receive();
       printf("Send ping!\n");
       VglRPC rpc_ping = {.id = VglRPCId::PING};
       vgl_ipc.send(rpc_ping);
       VglRPC response = vgl_ipc.receive();
       if (response.id != VglRPCId::TIMEOUT) {
         is_connected = true;
-        printf("Send restart!\n");
+        printf("Send restart with id: %lu!\n", shared_mem_id);
         VglRPC rpc = {.id = VglRPCId::RESTART, .shared_mem_id = shared_mem_id};
         vgl_ipc.send(rpc);
       }

@@ -18,7 +18,9 @@ enum VglRPCId {
 
 struct VglRPC {
   VglRPCId id;
-  uint64_t shared_mem_id;
+  uint64_t shared_mem_id = 0;
+  uint16_t width = 0;
+  uint16_t height = 0;
 };
 
 class SharedMem {
@@ -27,6 +29,7 @@ class SharedMem {
   ~SharedMem();
   void write(uint8_t *data, size_t len);
   size_t get_written_size();
+  std::vector<uint8_t> get_frame();
   static uint64_t generate_mem_id();
 
  private:
@@ -42,6 +45,7 @@ class VglMightyIPC {
 
   void send(VglRPC rpc);
   VglRPC receive();
+  void clear_receive();
 
  private:
   VglRPC receive_vgl();

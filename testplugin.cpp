@@ -41,6 +41,7 @@
 #include "Error.h"
 #include "GenericQ.h"
 #include "Thread.h"
+#include "backtrace.h"
 #include "rrtransport.h"
 #include "shared_mem_comm.h"
 
@@ -81,6 +82,17 @@ void log_info(const char *message, ...) {
   va_start(args, message);
   log_format("info", message, args);
   va_end(args);
+}
+
+int VglXErrorFunc(Display *dsp, XErrorEvent *error) {
+  /** Note: Even if this catches xdo errors, xdo will still segfault
+   * sometimes. Here's a discussion about it:
+   * https://github.com/rshk/python-libxdo/issues/24 */
+  char errorstring[128];
+  XGetErrorText(dsp, error->error_code, errorstring, 128);
+  log_info("XErrorFunc error: %s", errorstring);
+
+  return 0;
 }
 
 class GPUEncBuffer {
@@ -130,7 +142,14 @@ class GPUEncBuffer {
   }
 
   void init(int width_, int height_) {
-    if (fbo && rbo && width_ == width && height_ == height) return;
+    if (fbo && rbo && width_ == width && height_ == height) {
+      return;
+    }
+    log_info("Call GPUEncBuffer::init");
+
+    // helps w/ resize .. maybe makes stuff less stable?
+    draw = glXGetCurrentDrawable();
+    read = glXGetCurrentReadDrawable();
 
     width = width_;
     height = height_;
@@ -154,8 +173,9 @@ class GPUEncBuffer {
   }
 
   void makeCurrent(Display *dpy) {
-    if (!glXMakeContextCurrent(dpy, draw, read, ctx))
+    if (!glXMakeContextCurrent(dpy, draw, read, ctx)) {
       THROW("Could not make GPU buffer's OpenGL context current");
+    }
   }
 
   void makeCurrentVGL(void) {
@@ -227,6 +247,7 @@ class GPUEncTrans : public Runnable {
     if (!dpy3D) THROW("OpenGL context created by VirtualGL Faker is invalid");
     if (!(dpy3DClone = XOpenDisplay(DisplayString(dpy3D))))
       THROW("Could not clone 3D X server connection");
+    XSetErrorHandler(VglXErrorFunc);
 
     thread = new Thread(this);
     thread->start();
@@ -336,13 +357,12 @@ void GPUEncTrans::run(void) {
   try {
     while (!shutdown) {
       void *ptr = NULL;
-      log_info("Waiting for frame request..");
       VglRPC rpc = mighty_ipc.receive();
+      Timer t;
       if (rpc.id == VglRPCId::RESTART) {
         log_info("Restart requested! Id: %d", rpc.shared_mem_id);
         reset_encoder(rpc.shared_mem_id);
       }
-      log_info("Got frame request!");
       if (queue.items() == 0) {
         VglRPC res = {.id = VglRPCId::EMPTY_RESPONSE};
         mighty_ipc.send(res);
@@ -364,9 +384,11 @@ void GPUEncTrans::run(void) {
         // A buffer is complete either when it is spoiled or when it has been
         // encoded.
         buf->signalComplete();
-        log_info("Sending frame response.. with size %d",
-                 shared_mem->get_written_size());
+        log_info("Sending frame response.. with size %d in time %f",
+                 shared_mem->get_written_size(), t.getElapsedMilliseconds());
         VglRPC res = {.id = VglRPCId::FRAME_RESPONSE};
+        res.width = width;
+        res.height = height;
         mighty_ipc.send(res);
       }
     }
@@ -599,6 +621,9 @@ void *RRTransInit(Display *dpy, Window win, FakerConfig *fconfig) {
   } catch (Error &e) {
     snprintf(errStr, MAXSTR + 14, "Error in %s -- %s", e.getMethod(),
              e.getMessage());
+    std::string backtrace = get_backtrace();
+    fprintf(debug, "%s", backtrace.c_str());
+
     handle = NULL;
   }
 
@@ -611,7 +636,7 @@ int RRTransConnect(void *handle, char *receiverName, int port) { return 0; }
 
 RRFrame *RRTransGetFrame(void *handle, int width, int height, int format,
                          int stereo) {
-  log_info("RRTransGetFrame()");
+  // log_info("RRTransGetFrame(). Dims: %dx%d", width, height);
   _vgl_disableFaker();
 
   RRFrame *frame = NULL;
@@ -622,6 +647,8 @@ RRFrame *RRTransGetFrame(void *handle, int width, int height, int format,
   } catch (Error &e) {
     snprintf(errStr, MAXSTR + 14, "Error in %s -- %s", e.getMethod(),
              e.getMessage());
+    std::string backtrace = get_backtrace();
+    fprintf(debug, "%s", backtrace.c_str());
     frame = NULL;
   }
 
@@ -642,6 +669,8 @@ int RRTransReady(void *handle) {
   } catch (Error &e) {
     snprintf(errStr, MAXSTR + 14, "Error in %s -- %s", e.getMethod(),
              e.getMessage());
+    std::string backtrace = get_backtrace();
+    fprintf(debug, "%s", backtrace.c_str());
     ret = -1;
   }
 
@@ -661,6 +690,8 @@ int RRTransSynchronize(void *handle) {
   } catch (Error &e) {
     snprintf(errStr, MAXSTR + 14, "Error in %s -- %s", e.getMethod(),
              e.getMessage());
+    std::string backtrace = get_backtrace();
+    fprintf(debug, "%s", backtrace.c_str());
     ret = -1;
   }
 
@@ -670,7 +701,7 @@ int RRTransSynchronize(void *handle) {
 }
 
 int RRTransSendFrame(void *handle, RRFrame *frame, int sync) {
-  log_info("RRTransSendFrame()");
+  // log_info("RRTransSendFrame()");
   _vgl_disableFaker();
 
   int ret = 0;
@@ -690,6 +721,8 @@ int RRTransSendFrame(void *handle, RRFrame *frame, int sync) {
   } catch (Error &e) {
     snprintf(errStr, MAXSTR + 14, "Error in %s -- %s", e.getMethod(),
              e.getMessage());
+    std::string backtrace = get_backtrace();
+    fprintf(debug, "%s", backtrace.c_str());
     ret = -1;
   }
 
@@ -710,6 +743,8 @@ int RRTransDestroy(void *handle) {
   } catch (Error &e) {
     snprintf(errStr, MAXSTR + 14, "Error in %s -- %s", e.getMethod(),
              e.getMessage());
+    std::string backtrace = get_backtrace();
+    fprintf(debug, "%s", backtrace.c_str());
     ret = -1;
   }
 

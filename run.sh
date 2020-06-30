@@ -1,1 +1,3 @@
-exec vglrun -ld `pwd` -trans hello ${1+"$@"}
+set -ex
+
+exec vglrun -ld `pwd` -trans hello -d :1 google-chrome --disable-gpu-sandbox
