@@ -98,21 +98,13 @@ int VglXErrorFunc(Display *dsp, XErrorEvent *error) {
 class GPUEncBuffer {
  public:
   GPUEncBuffer(void)
-      : fbo(0),
-        rbo(0),
-        width(0),
-        height(0),
-        dpy3D(NULL),
-        draw(0),
-        read(0),
-        vglCtx(0),
-        ctx(0) {
+      : fbo(0), rbo(0), width(0), height(0), dpy3D(NULL), ctx(0), pb(0) {
     ready.wait();
 
     dpy3D = glXGetCurrentDisplay();
-    draw = glXGetCurrentDrawable();
-    read = glXGetCurrentReadDrawable();
-    vglCtx = glXGetCurrentContext();
+    GLXDrawable draw = glXGetCurrentDrawable();
+    GLXDrawable read = glXGetCurrentReadDrawable();
+    GLXContext vglCtx = glXGetCurrentContext();
     if (!dpy3D || !draw || !read || !vglCtx)
       THROW("OpenGL context created by VirtualGL Faker is invalid");
     int fbcid = 0;
@@ -127,16 +119,24 @@ class GPUEncBuffer {
     XFree(configs);
     if (!(ctx = glXCreateNewContext(dpy3D, config, GLX_RGBA_TYPE, NULL, True)))
       THROW("Could not create OpenGL context for GPU buffer");
+    int pbattribs[] = {GLX_PBUFFER_WIDTH,
+                       1,
+                       GLX_PBUFFER_HEIGHT,
+                       1,
+                       GLX_PRESERVED_CONTENTS,
+                       True,
+                       None};
+    if (!(pb = glXCreatePbuffer(dpy3D, config, pbattribs)))
+      THROW("Could not create dummy Pbuffer for GPU buffer");
   }
 
   ~GPUEncBuffer(void) {
     destroy();
-    makeCurrentVGL();
     glXDestroyContext(dpy3D, ctx);
+    glXDestroyPbuffer(dpy3D, pb);
   }
 
   void destroy(void) {
-    makeCurrent(dpy3D);
     if (rbo) glDeleteRenderbuffers(1, &rbo);
     if (fbo) glDeleteFramebuffers(1, &fbo);
   }
@@ -153,6 +153,12 @@ class GPUEncBuffer {
 
     width = width_;
     height = height_;
+    GLXDrawable draw = glXGetCurrentDrawable();
+    GLXDrawable read = glXGetCurrentReadDrawable();
+    GLXContext vglCtx = glXGetCurrentContext();
+    if (!draw || !read || !vglCtx)
+      THROW("OpenGL context created by VirtualGL Faker is invalid");
+    makeCurrent(dpy3D);
     destroy();
     glGenFramebuffers(1, &fbo);
     glGenRenderbuffers(1, &rbo);
@@ -164,30 +170,33 @@ class GPUEncBuffer {
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
       glBindFramebuffer(GL_FRAMEBUFFER, 0);
       glBindRenderbuffer(GL_RENDERBUFFER, 0);
-      makeCurrentVGL();
+      if (!glXMakeContextCurrent(dpy3D, draw, read, vglCtx))
+        THROW("Could not make VirtualGL's OpenGL context current");
       THROW("FBO is incomplete");
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glBindRenderbuffer(GL_RENDERBUFFER, 0);
-    makeCurrentVGL();
+    if (!glXMakeContextCurrent(dpy3D, draw, read, vglCtx))
+      THROW("Could not make VirtualGL's OpenGL context current");
   }
 
   void makeCurrent(Display *dpy) {
-    if (!glXMakeContextCurrent(dpy, draw, read, ctx)) {
+    if (!glXMakeContextCurrent(dpy, pb, pb, ctx)) {
       THROW("Could not make GPU buffer's OpenGL context current");
     }
-  }
-
-  void makeCurrentVGL(void) {
-    if (!glXMakeContextCurrent(dpy3D, draw, read, vglCtx))
-      THROW("Could not make VirtualGL's OpenGL context current");
   }
 
   void copyPixels(void) {
     GLint readBuf = 0;
     glGetIntegerv(GL_READ_BUFFER, &readBuf);
     if (!readBuf) THROW("Could not get current read buffer");
-    makeCurrent(dpy3D);
+    GLXDrawable draw = glXGetCurrentDrawable();
+    GLXDrawable read = glXGetCurrentReadDrawable();
+    GLXContext vglCtx = glXGetCurrentContext();
+    if (!draw || !read || !vglCtx)
+      THROW("OpenGL context created by VirtualGL Faker is invalid");
+    if (!glXMakeContextCurrent(dpy3D, pb, draw, ctx))
+      THROW("Could not make GPU buffer's OpenGL context current");
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo);
     glBindRenderbuffer(GL_RENDERBUFFER, rbo);
     glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
@@ -196,7 +205,8 @@ class GPUEncBuffer {
         GL_FRAMEBUFFER_COMPLETE) {
       glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
       glBindRenderbuffer(GL_RENDERBUFFER, 0);
-      makeCurrentVGL();
+      if (!glXMakeContextCurrent(dpy3D, draw, read, vglCtx))
+        THROW("Could not make VirtualGL's OpenGL context current");
       THROW("FBO is incomplete");
     }
     glReadBuffer(readBuf);
@@ -204,7 +214,8 @@ class GPUEncBuffer {
     glCopyPixels(0, 0, width, height, GL_COLOR);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
     glBindRenderbuffer(GL_RENDERBUFFER, 0);
-    makeCurrentVGL();
+    if (!glXMakeContextCurrent(dpy3D, draw, read, vglCtx))
+      THROW("Could not make VirtualGL's OpenGL context current");
   }
 
   GLuint getFBO(void) { return fbo; }
@@ -220,8 +231,8 @@ class GPUEncBuffer {
   GLuint fbo, rbo;
   int width, height;
   Display *dpy3D;
-  GLXDrawable draw, read;
-  GLXContext vglCtx, ctx;
+  GLXContext ctx;
+  GLXPbuffer pb;
 };
 
 class GPUEncTrans : public Runnable {
