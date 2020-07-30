@@ -19,13 +19,13 @@ enum VglRPCId {
 struct VglRPC {
   VglRPCId id;
   uint64_t shared_mem_id = 0;
-  uint16_t width = 0;
-  uint16_t height = 0;
+  uint16_t width = 0;   // RESTART and FRAME_RESPONSE
+  uint16_t height = 0;  // RESTART and FRAME_RESPONSE
 };
 
 class SharedMem {
  public:
-  SharedMem(bool create, uint64_t shared_mem_id);
+  SharedMem(bool mighty_server, uint64_t shared_mem_id);
   ~SharedMem();
   void write(uint8_t *data, size_t len);
   size_t get_written_size();
@@ -36,6 +36,7 @@ class SharedMem {
   struct shared_memory *shared_mem_ptr;
   int fd_shm;
   std::string shared_mem_path;
+  bool mighty_server;
 };
 
 class VglMightyIPC {

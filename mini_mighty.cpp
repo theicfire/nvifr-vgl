@@ -33,7 +33,10 @@ int main(int argc, char **argv) {
       if (response.id != VglRPCId::TIMEOUT) {
         is_connected = true;
         printf("Send restart with id: %lu!\n", shared_mem_id);
-        VglRPC rpc = {.id = VglRPCId::RESTART, .shared_mem_id = shared_mem_id};
+        VglRPC rpc = {.id = VglRPCId::RESTART,
+                      .shared_mem_id = shared_mem_id,
+                      .width = 0,
+                      .height = 0};
         vgl_ipc.send(rpc);
       }
     } else {

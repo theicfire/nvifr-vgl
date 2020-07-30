@@ -19,7 +19,8 @@ void error(const char *msg) {
   exit(1);
 }
 
-SharedMem::SharedMem(bool mighty_server, uint64_t shared_mem_id) {
+SharedMem::SharedMem(bool mighty_server, uint64_t shared_mem_id)
+    : mighty_server(mighty_server) {
   std::stringstream ss;
   ss << "/shared-mem-" << shared_mem_id;
   shared_mem_path = ss.str();
@@ -56,7 +57,10 @@ SharedMem::~SharedMem() {
   if (munmap(shared_mem_ptr, sizeof(struct shared_memory)) == -1) {
     error("munmap");
   }
-  shm_unlink(shared_mem_path.c_str());
+  close(fd_shm);
+  if (mighty_server) {
+    shm_unlink(shared_mem_path.c_str());
+  }
 }
 
 uint64_t SharedMem::generate_mem_id() {

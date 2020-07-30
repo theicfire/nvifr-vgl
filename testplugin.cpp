@@ -365,13 +365,18 @@ class GPUEncTrans : public Runnable {
 void GPUEncTrans::run(void) {
   _vgl_disableFaker();
 
+  int width = 0;
+  int height = 0;
   try {
     while (!shutdown) {
       void *ptr = NULL;
       VglRPC rpc = mighty_ipc.receive();
       Timer t;
       if (rpc.id == VglRPCId::RESTART) {
-        log_info("Restart requested! Id: %d", rpc.shared_mem_id);
+        log_info("Restart requested! Id: %d, dims: %dx%d", rpc.shared_mem_id,
+                 rpc.width, rpc.height);
+        width = rpc.width;
+        height = rpc.height;
         reset_encoder(rpc.shared_mem_id);
       }
       if (queue.items() == 0) {
@@ -387,7 +392,11 @@ void GPUEncTrans::run(void) {
         GPUEncBuffer *buf = (GPUEncBuffer *)frame->opaque;
         buf->makeCurrent(dpy3DClone);
         // setupNVIFRSYS()
-        setupNVIFRHwEnc(frame->w, frame->h);
+        if (width != 0 && height != 0) {
+          setupNVIFRHwEnc(width, height);
+        } else {
+          setupNVIFRHwEnc(frame->w, frame->h);
+        }
         // captureSys(buf->getFBO());
         captureHwEnc(buf->getFBO(), buf->getRBO());
         glXMakeContextCurrent(dpy3DClone, 0, 0, 0);
